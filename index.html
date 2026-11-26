@@ -240,10 +240,13 @@ const METHODS=['كاش','فيزا','تحويل / انستاباي','آجل'];
 async function pSell(){
   await loadFunds();
   const items=await run(sb.from('items').select('id,name,model,serial,qty,price,category').gt('qty',0).order('name').limit(3000));
-  main(`<div class="card"><h2>فاتورة بيع جديدة</h2><input id="sq" placeholder="ابحث عن صنف (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="sr" style="margin:8px 0"></div>
+  main(`<div class="card"><h2>فاتورة بيع جديدة</h2>
+  <div class="f2"><div><label>اسم العميل</label><input name="cust" list="cl" autocomplete="off" placeholder="اختر من القائمة أو اكتب اسم جديد"><datalist id="cl"></datalist></div>${fld('الموبايل','ph')}</div>
+  <h3 style="margin:14px 0 6px">الأصناف</h3><input id="sq" placeholder="ابحث عن صنف (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="sr" style="margin:8px 0"></div>
   <div class="tw"><table><thead><tr><th>الصنف</th><th style="width:80px">الكمية</th><th style="width:110px">السعر</th><th>الإجمالي</th><th></th></tr></thead><tbody id="cb"></tbody></table></div>
   <p><button class="btn g s" onclick="addFree()">+ بند حر (خدمة / صنف غير مسجل)</button></p>
-  <div class="f2"><div><label>اسم العميل</label><input name="cust" list="cl" autocomplete="off" placeholder="اختر من القائمة أو اكتب اسم جديد"><datalist id="cl"></datalist></div>${fld('الموبايل','ph')}<div><label>الدفع إلى</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}</div>
+  <h3 style="margin:14px 0 6px;border-top:1px solid #ddd;padding-top:12px">الدفع</h3>
+  <div class="f2"><div><label>الدفع إلى</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}</div>
   <div id="xpb"></div><p><button class="btn g s" id="xpa">+ دفعة أخرى (صندوق آخر)</button></p>
   ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="tt" class="ltr">0</span></h2><button class="btn" id="go">تأكيد البيع</button></div>`);
   const xp=[];const drawX=()=>{$('#xpb').innerHTML=xp.map((x,k)=>`<div class="row" style="margin:4px 0"><select onchange="window._xp[${k}].fund=this.value">${FUNDS.map(fd=>`<option value="${fd.old_id}" ${String(fd.old_id)===String(x.fund)?'selected':''}>${esc(fd.name)}</option>`).join('')}</select><input type="number" step="any" placeholder="المبلغ" value="${x.amt||''}" onchange="window._xp[${k}].amt=this.value"><button class="btn g s" onclick="window._xp.splice(${k},1);window._dx()">✕</button></div>`).join('')};
