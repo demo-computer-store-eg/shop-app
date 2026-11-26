@@ -117,6 +117,7 @@ const PAGES={
  buy:{t:'+ فاتورة شراء',h:1,f:()=>pBuy()},
  sales:{t:'فواتير البيع',f:()=>pSales('بيع')},
  purch:{t:'فواتير الشراء',f:()=>pSales('شراء')},
+ drw:{t:'درج DEMO',f:()=>pDrw()},
  ser:{t:'فحص سيريال',f:()=>pSer()},
  inv:{t:'المخزون',f:()=>pInv()},
  count:{t:'الجرد',f:()=>pCount()},
@@ -277,6 +278,13 @@ async function printSale(id){
   const s=await run(sb.from('sales').select('*,sale_lines(*),sale_pays(*)').eq('id',id).single());
   const w=window.open('','_blank');if(!w)return;
   w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>فاتورة ${id}</title><style>body{font-family:Tahoma;max-width:380px;margin:auto;font-size:13px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px dashed #999;padding:4px;text-align:right}h2,p{text-align:center;margin:4px}</style></head><body><div style="text-align:center"><img src="${LOGO}" style="width:90px;height:90px;border-radius:50%"></div><h2>DEMO Computer Store</h2><p>٧ ميدان سفنكس - كمبيوتر مول - الدور الأول F3<br>01100605106</p><hr><p>فاتورة #${s.id} - ${fdt(s.created_at)}</p><p>${esc(s.customer||'')}</p><table><tr><th>الصنف</th><th>كمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>${s.sale_lines.map(l=>`<tr><td>${esc(l.name)}${l.serial?'<br><small>S/N: '+esc(l.serial)+'</small>':''}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.price*l.qty)}</td></tr>`).join('')}</table><h3>الإجمالي: ${money(s.total)}</h3><p>المدفوع: ${money(s.paid)} ${s.total>s.paid?' - المتبقي: '+money(s.total-s.paid):''}</p>${paysTxt(s)}<p>شكرا لتعاملكم معنا</p><script>setTimeout(()=>print(),300)<\/script></body></html>`);w.document.close();
+}
+
+/* ---------- drawer ---------- */
+async function pDrw(){
+  const r=await run(sb.rpc('drawer_info'));const b=Number(r.balance);
+  main(`<div class="card"><h2>درج ${esc(r.name||'DEMO')}</h2><div class="grid"><div class="stat"><span>الرصيد الحالي في الدرج</span><b>${money(b)}</b></div></div><p class="muted">للعرض فقط. قارن الرقم ده بالفلوس الموجودة فعلا في الدرج.</p>
+  <h3>آخر الحركات</h3><div class="tw"><table><tr><th>التاريخ</th><th>البيان</th><th>داخل</th><th>خارج</th><th>الرصيد بعدها</th></tr>${r.rows.map(x=>`<tr><td>${esc(x.day)}</td><td>${esc(x.remarks||'')}</td><td>${x.debit>0?money(x.debit):''}</td><td>${x.credit>0?money(x.credit):''}</td><td>${money(x.bal)}</td></tr>`).join('')}</table></div></div>`);
 }
 
 /* ---------- serial lookup ---------- */
