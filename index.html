@@ -135,7 +135,7 @@ function autoRefresh(fn,ms){const id=setInterval(()=>{if($('#modal').style.displ
 const main=h=>{$('#main').innerHTML=h};
 
 /* ---------- home ---------- */
-const actName={'INSERT sales':'عملية بيع','DELETE sales':'إلغاء فاتورة','INSERT items':'إضافة صنف','DELETE items':'حذف صنف','INSERT repairs':'جهاز صيانة جديد','UPDATE repairs':'تعديل صيانة','DELETE repairs':'حذف صيانة','INSERT expenses':'مصروف','DELETE expenses':'حذف مصروف','INSERT stock_moves':'حركة مخزون'};
+const actName={'INSERT sales':'عملية بيع','UPDATE sales':'عملية بيع','DELETE sales':'إلغاء فاتورة','INSERT items':'إضافة صنف','DELETE items':'حذف صنف','INSERT repairs':'جهاز صيانة جديد','UPDATE repairs':'تعديل صيانة','DELETE repairs':'حذف صيانة','INSERT expenses':'مصروف','DELETE expenses':'حذف مصروف','INSERT stock_moves':'حركة مخزون'};
 async function presenceBox(){
   const p=await run(sb.from('presence').select('*').order('last_seen',{ascending:false}));
   return `<div class="card"><h2>الموظفين الآن</h2>${p.length?p.map(x=>{const on=Date.now()-new Date(x.last_seen)<90000;return `<div><span class="dot ${on?'on':''}"></span><b>${esc(x.name||x.email)}</b> <span class="muted">${on?'متصل الآن - '+esc(x.page||''):'آخر ظهور '+fdt(x.last_seen)}</span></div>`}).join(''):'<span class="muted">لا يوجد</span>'}</div>`;
