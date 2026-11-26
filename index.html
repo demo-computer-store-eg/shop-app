@@ -134,6 +134,7 @@ const PAGES={
  bal:{t:'الأرصدة (له / عليه)',a:1,f:()=>pBal()},
  act:{t:'النشاط',a:1,f:()=>pAct()},
  staff:{t:'الموظفين',a:1,f:()=>pStaff()},
+ bk:{t:'نسخة احتياطية',a:1,f:()=>pBk()},
  me:{t:'حسابي',f:()=>pMe()},
  drw:{t:'رصيد DEMO',f:()=>pDrw()}
 };
@@ -440,6 +441,48 @@ async function pBuy(){
     $('#bgo').disabled=true;
     try{const id=await run(sb.rpc('make_purchase',{p_party:party,p_supplier:nm0,p_method:cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_paid:paid,p_fund:cred?null:parseInt(f.meth),p_note:f.note,p_lines:BUY.map(l=>({item_id:l.item_id||null,name:l.name,serial:l.serial||'',price:l.price||0,qty:l.qty,cost:l.cost}))}));
       if(party&&f.ph){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}BUY=[];toast('تم تسجيل فاتورة الشراء #'+id);pBuy()}catch(e){$('#bgo').disabled=false}};
+}
+
+
+/* ---------- backup / export (admin only) ---------- */
+const BK_TABLES=[['parties','الحسابات والأرصدة'],['ledger','حركات الحسابات (دفتر اليومية)'],['transfers','التحويلات بين الصناديق'],['items','المخزون'],['item_costs','تكلفة الأصناف'],['stock_moves','حركة المخزون'],['sales','فواتير البيع'],['sale_lines','سطور فواتير البيع'],['sale_costs','تكلفة سطور البيع'],['sale_pays','دفعات فواتير البيع'],['purchases','فواتير الشراء'],['purchase_lines','سطور فواتير الشراء'],['repairs','الصيانة'],['expenses','المصروفات'],['old_bills','فواتير البرنامج القديم'],['old_bill_lines','سطور فواتير البرنامج القديم'],['activity','سجل النشاط']];
+async function bkFetch(t){
+  let all=[],off=0;const N=1000;
+  for(;;){
+    let q=sb.from(t).select('*').range(off,off+N-1);
+    let r=await q.order('id',{ascending:true});
+    if(r.error&&/column .*id|does not exist|42703/i.test(r.error.message+(r.error.code||''))){r=await sb.from(t).select('*').range(off,off+N-1)}
+    if(r.error)throw new Error(t+': '+r.error.message);
+    all=all.concat(r.data);if(r.data.length<N)break;off+=N;
+  }
+  return all;
+}
+function bkSave(name,text,type){const b=new Blob([text],{type});const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=name;document.body.appendChild(a);a.click();a.remove()}
+async function bkFull(){
+  if(!isAdmin())return;const st=$('#bkst');const out={app:'DEMO shop-app',created_at:new Date().toISOString(),by:me.email,note:'نسخة احتياطية كاملة من بيانات المحل',tables:{}};const cnt={};
+  try{for(const [t,n] of BK_TABLES){st.textContent='جاري تحميل: '+n+' ...';out.tables[t]=await bkFetch(t);cnt[t]=out.tables[t].length}
+    const pr=await run(sb.from('profiles').select('id,name,username,role,active,created_at'));out.tables.profiles=pr;cnt.profiles=pr.length;
+    out.counts=cnt;bkSave('DEMO-backup-'+ymd(new Date())+'.json',JSON.stringify(out),'application/json');
+    st.innerHTML='<span class="tag green">تم</span> اتحمل ملف النسخة الاحتياطية. '+Object.entries(cnt).map(([k,v])=>k+': '+v).join(' | ')}
+  catch(e){st.innerHTML='<span class="tag red">فشل</span> '+esc(e.message)}
+}
+async function bkCsv(t){
+  if(!isAdmin())return;const st=$('#bkst');
+  try{st.textContent='جاري التحميل ...';const rows=await bkFetch(t);if(!rows.length){st.textContent='الجدول فاضي';return}
+    const cols=Object.keys(rows[0]);const lines=[cols.map(csvEsc).join(',')].concat(rows.map(r=>cols.map(c=>csvEsc(r[c]!==null&&typeof r[c]==='object'?JSON.stringify(r[c]):r[c])).join(',')));
+    bkSave(t+'-'+ymd(new Date())+'.csv','\ufeff'+lines.join('\n'),'text/csv');st.innerHTML='<span class="tag green">تم</span> '+rows.length+' صف'}
+  catch(e){st.innerHTML='<span class="tag red">فشل</span> '+esc(e.message)}
+}
+async function pBk(){
+  if(!isAdmin())return main('<div class="card">للمدير فقط</div>');
+  main(`<div class="card"><h2>نسخة احتياطية وتصدير البيانات</h2>
+  <p class="muted">للمدير فقط (عادل). الملفات بتتحمل على الجهاز اللي أنت فاتح منه.</p>
+  <p><button class="btn" onclick="bkFull()">تحميل نسخة احتياطية كاملة (ملف واحد JSON)</button></p>
+  <p class="muted">الملف فيه كل الحسابات والأرصدة والدفتر والتحويلات والمخزون وتكلفته وحركته وفواتير البيع والشراء بسطورها ودفعاتها والصيانة والمصروفات وفواتير البرنامج القديم وسجل النشاط، وبيانات الموظفين (الاسم واسم الدخول والصلاحية بدون كلمات سر). عمل نسخة كل أسبوع أو بعد شغل كبير فكرة كويسة. احفظ الملف في مكان تاني (فلاشة أو جوجل درايف).</p>
+  <h3 style="margin-top:14px">تصدير جدول لوحده (CSV يفتح في إكسل)</h3>
+  <div class="row">${BK_TABLES.map(([t,n])=>`<button class="btn g s" style="margin:2px" onclick="bkCsv('${t}')">${n}</button>`).join('')}</div>
+  <p id="bkst" style="margin-top:10px"></p>
+  <p class="muted">للاسترجاع: ابعت ملف النسخة (JSON) للمساعد وهو يرجّع البيانات في قاعدة البيانات. ملفات CSV للاطلاع والمراجعة والتحليل في إكسل، مش للاسترجاع.</p></div>`);
 }
 
 /* ---------- stocktake ---------- */
