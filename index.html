@@ -503,7 +503,7 @@ async function pCount(){
 
 /* ---------- repairs ---------- */
 const RSTAT=['استلام','جاري الفحص','في انتظار موافقة العميل','في انتظار قطعة غيار','جاري الإصلاح','جاهز للتسليم','تم التسليم','مرفوض','ملغي'];
-const SERV=['تنظيف','ابجريد','صيانة ماذربورد','تغيير كيبورد','تغيير سوكت شحن','تغيير هاوسنج','لحام هاوسنج','تغيير شاشة','صيانة عامة','تسطيب ويندوز / برامج','أخرى'];
+const SERV=['تنظيف','ابجريد','صيانة ماذربورد','تغيير كيبورد','تغيير سوكت شحن','تغيير هاوسنج','لحام هاوسنج','تغيير شاشة','صيانة عامة','تسطيب ويندوز / برامج','خدمة مجانية (بدون أجر)','أخرى'];
 const rcol=s=>({'تم التسليم':'green','جاهز للتسليم':'blue','ملغي':'red','مرفوض':'red'}[s]||'amber');
 async function pRep(){
   await loadFunds();if(isAdmin()&&!PARTIES)await loadParties();
@@ -512,7 +512,7 @@ async function pRep(){
   main(`<div class="card"><div class="row"><input id="q" placeholder="بحث (اسم / موبايل / جهاز / رقم)"><select id="qs" class="fit"><option value="open">المفتوحة</option><option value="">الكل</option>${RSTAT.map(s=>`<option>${s}</option>`).join('')}</select><button class="btn" onclick="repForm()">+ جهاز جديد</button></div><div class="tw"><table><thead><tr><th>#</th><th>التاريخ</th><th>العميل</th><th>الجهاز</th><th>الخدمة</th><th>السعر</th><th>الحالة</th></tr></thead><tbody id="tb"></tbody></table></div></div>`);
   const draw=()=>{const q=$('#q').value.trim().toLowerCase(),s=$('#qs').value;
     const L=reps.filter(r=>(s===''||(s==='open'?!['تم التسليم','ملغي','مرفوض'].includes(r.status):r.status===s))&&(!q||[r.id,r.customer,r.phone,r.device,r.serial].join(' ').toLowerCase().includes(q))).slice(0,300);
-    $('#tb').innerHTML=L.map(r=>`<tr class="click" onclick="repForm(${r.id})"><td>${r.id}</td><td>${fd(r.created_at)}</td><td>${esc(r.customer)}<br><span class="muted ltr">${esc(r.phone)}</span></td><td>${esc(r.device)}</td><td>${esc(r.service)}</td><td>${money(r.price)}${r.deposit?`<br><small class="muted">عربون ${money(r.deposit)}</small>`:''}</td><td><span class="tag ${rcol(r.status)}">${esc(r.status)}</span>${r.status==='مرفوض'&&r.reject_reason?'<br><small class="muted">'+esc(r.reject_reason)+'</small>':''}</td></tr>`).join('')};
+    $('#tb').innerHTML=L.map(r=>`<tr class="click" onclick="repForm(${r.id})"><td>${r.id}</td><td>${fd(r.created_at)}</td><td>${esc(r.customer)}<br><span class="muted ltr">${esc(r.phone)}</span></td><td>${esc(r.device)}</td><td>${esc(r.service)}</td><td>${r.price>0||!(r.service==='خدمة مجانية (بدون أجر)'||r.status==='تم التسليم')?money(r.price):'<span class="tag green">مجاني</span>'}${r.deposit?`<br><small class="muted">عربون ${money(r.deposit)}</small>`:''}</td><td><span class="tag ${rcol(r.status)}">${esc(r.status)}</span>${r.status==='مرفوض'&&r.reject_reason?'<br><small class="muted">'+esc(r.reject_reason)+'</small>':''}</td></tr>`).join('')};
   $('#q').oninput=draw;$('#qs').onchange=draw;draw();
 }
 function repForm(id){
@@ -524,10 +524,11 @@ function repForm(id){
   {const up=()=>{const e=$('#rprof'),F=$('#rf');if(e&&F)e.textContent=money(num(F.price.value)-num(F.parts_cost.value))};['price','parts_cost'].forEach(n=>{const x=$('#rf')[n];if(x)x.oninput=up})}
   $('#rf').onsubmit=async e=>{e.preventDefault();const f=readForm(e.target);
     const row={customer:f.customer,phone:f.phone,device:f.device,serial:f.serial,service:f.service,status:f.status,price:num(f.price),deposit:num(f.deposit),parts_cost:num(f.parts_cost),tech:f.tech,problem:f.problem,notes:f.notes,reject_reason:f.status==='مرفوض'?(f.reject_reason||null):null,updated_at:new Date().toISOString()};
+    if(f.service==='خدمة مجانية (بدون أجر)'){row.price=0;row.deposit=0}
     if(f.status==='تم التسليم'&&!(r.delivered_at))row.delivered_at=new Date().toISOString();
     if(id)await run(sb.from('repairs').update(row).eq('id',id));else{row.user_email=me.email;await run(sb.from('repairs').insert(row))}
     if(id&&f.status==='تم التسليم'&&num(f.cr)>0&&f.cparty)await run(sb.rpc('repair_credit',{p_id:id,p_party:+f.cparty,p_amount:num(f.cr)}));
-    if(id&&f.status==='تم التسليم'&&num(f.recv)>0)await run(sb.rpc('repair_receive',{p_id:id,p_amount:num(f.recv),p_fund:+f.fund}));
+    if(id&&f.status==='تم التسليم'&&row.price>0&&num(f.recv)>0)await run(sb.rpc('repair_receive',{p_id:id,p_amount:num(f.recv),p_fund:+f.fund}));
     closeModal();toast('تم الحفظ');pRep()};
 }
 async function delRep(id){if(!confirm('حذف؟'))return;await run(sb.from('repairs').delete().eq('id',id));closeModal();pRep()}
