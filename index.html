@@ -413,11 +413,15 @@ async function pBuy(){
   const [items]=await Promise.all([run(sb.from('items').select('id,name,model,serial,qty,price,category').order('name').limit(3000)),loadFunds()]);
   let CL=[];try{CL=(await run(sb.rpc(isAdmin()?'customer_list':'supplier_list')))||[]}catch(e){}
   BUY=BUY||[];
-  main(`<div class="card"><h2>فاتورة شراء جديدة</h2><input id="bq" placeholder="ابحث عن صنف موجود (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="br" style="margin:8px 0"></div>
-  <p><button class="btn g s" id="bnew">+ صنف جديد (غير مسجل في المخزون)</button></p>
+  main(`<div class="card"><h2>فاتورة شراء جديدة</h2>
+  <div class="f2"><div><label>المورد</label><input name="sup" list="bl" autocomplete="off" placeholder="اختر من الحسابات أو اكتب اسم"><datalist id="bl">${CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('')}</datalist></div>${fld('الموبايل','ph')}</div>
+  <h3 style="margin:14px 0 6px">الأصناف</h3><input id="bq" placeholder="ابحث عن صنف موجود (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="br" style="margin:8px 0"></div>
   <div class="tw"><table><thead><tr><th>الصنف</th><th style="width:80px">الكمية</th><th style="width:120px">سعر الشراء للوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody id="bb"></tbody></table></div>
-  <div class="f2"><div><label>المورد</label><input name="sup" list="bl" autocomplete="off" placeholder="اختر من الحسابات أو اكتب اسم"><datalist id="bl">${CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('')}</datalist></div>${isAdmin()?`<div><label>الدفع من</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}`:`<div><label>الدفع من</label><select name="meth"><option value="82">DEMO (الدرج)</option><option value="credit">آجل (على حساب المورد)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}`}${fld('ملاحظة','note')}</div>
-  <h2>الإجمالي: <span id="bt" class="ltr">0</span></h2><button class="btn" id="bgo">تأكيد الشراء</button></div>`);
+  <p><button class="btn g s" id="bnew">+ صنف جديد (غير مسجل في المخزون)</button></p>
+  <h3 style="margin:14px 0 6px;border-top:1px solid #ddd;padding-top:12px">الدفع</h3>
+  <div class="f2">${isAdmin()?`<div><label>الدفع من</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>`:`<div><label>الدفع من</label><select name="meth"><option value="82">DEMO (الدرج)</option><option value="credit">آجل (على حساب المورد)</option></select></div>`}${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}</div>
+  ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="bt" class="ltr">0</span></h2><button class="btn" id="bgo">تأكيد الشراء</button></div>`);
+  $('[name=sup]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=sup]').value.trim());if(m&&m.phone&&!$('[name=ph]').value)$('[name=ph]').value=m.phone};
   const draw=()=>{$('#bb').innerHTML=BUY.map((l,i)=>`<tr><td>${esc(l.name)} ${l.isnew?'<span class="tag amber">جديد</span>':''} <span class="muted ltr">${esc(l.serial||'')}</span></td><td><input type="number" min="1" value="${l.qty}" onchange="BUY[${i}].qty=Math.max(1,parseInt(this.value)||1);window._bd()"></td><td><input type="number" step="any" value="${l.cost}" onchange="BUY[${i}].cost=num(this.value);window._bd()"></td><td class="ltr">${money(l.qty*l.cost)}</td><td><button class="btn g s" onclick="BUY.splice(${i},1);window._bd()">✕</button></td></tr>`).join('');
     $('#bt').textContent=money(BUY.reduce((s,l)=>s+l.qty*l.cost,0))};
   window._bd=draw;draw();
@@ -427,7 +431,7 @@ async function pBuy(){
     $('#br').querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=items.find(x=>x.id===b.dataset.id);const ex=BUY.find(l=>l.item_id===i.id);if(ex)ex.qty++;else BUY.push({item_id:i.id,name:i.name,serial:i.serial,qty:1,cost:0});$('#bq').value='';$('#br').innerHTML='';draw()})};
   $('#bnew').onclick=()=>{const n=prompt('اسم الصنف الجديد');if(!n)return;const c=num(prompt('سعر الشراء للوحدة'));const p=num(prompt('سعر البيع'));const q=parseInt(prompt('الكمية','1'))||1;const sr=prompt('السيريال (اتركه فاضي لو مفيش)')||'';BUY.push({name:n,serial:sr,price:p,qty:q,cost:c,isnew:true});draw()};
   $('#bgo').onclick=async()=>{if(!BUY.length)return toast('الفاتورة فارغة',1);const tot=BUY.reduce((s,l)=>s+l.qty*l.cost,0);
-    const f={sup:$('[name=sup]').value,meth:$('[name=meth]').value,paid:$('[name=paid]').value,note:$('[name=note]').value};
+    const f={sup:$('[name=sup]').value,meth:$('[name=meth]').value,paid:$('[name=paid]').value,note:$('[name=note]').value,ph:$('[name=ph]').value.trim()};f.note=(f.ph?'موبايل المورد: '+f.ph+(f.note?' | ':''):'')+f.note;
     const cred=f.meth==='credit';let paid=f.paid===''?(cred?0:tot):num(f.paid);if(!isAdmin())paid=Math.min(paid,tot);
     const nm0=f.sup.trim(),mm=CL.find(c=>c.name.trim()===nm0);let party=null;
     if(mm)party=mm.old_id;
