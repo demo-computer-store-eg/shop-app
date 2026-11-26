@@ -178,7 +178,7 @@ async function pHome(){
     const ex=exps.reduce((s,x)=>s+x.amount,0);
     const low=items.filter(i=>i.min_qty>0&&i.qty<=i.min_qty).slice(0,12);
     main(`<div class="grid"><div class="stat"><span>مبيعات اليوم (${sales.length+oldS.length} فاتورة)</span><b>${money(tot)}</b></div><div class="stat"><span>ربح اليوم</span><b>${money(tot-cost+oldR.reduce((s,x)=>s+Number(x.credit)-Number(x.debit),0))}</b></div><div class="stat"><span>مصروفات اليوم</span><b>${money(ex)}</b></div><div class="stat"><span>أجهزة في الصيانة</span><b>${reps.length}</b></div></div>
-    <div class="card"><h2>أرصدة الصناديق (غير DEMO)</h2><div class="grid">${fnd.filter(f=>f.old_id!==82).map(f=>`<div class="stat"><span>${esc(f.name)}</span><b>${money(f.balance)}</b></div>`).join('')}</div></div>
+    <div class="card"><h2>أرصدة الصناديق</h2><div class="grid">${fnd.map(f=>`<div class="stat"><span>${esc(f.name)}</span><b>${money(f.balance)}</b></div>`).join('')}</div></div>
     ${await presenceBox()}
     <div class="card"><h2>أصناف قاربت على النفاد</h2>${low.length?low.map(i=>`<span class="tag red" style="margin:2px">${esc(i.name)}: ${i.qty}</span>`).join(' '):'<span class="muted">لا يوجد</span>'}</div>
     ${await actBox(15)}`);
