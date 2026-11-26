@@ -113,8 +113,8 @@ async function logout(){await sb.auth.signOut();me=null;showLogin()}
 
 const PAGES={
  home:{t:'لوحة التحكم',a:1,f:()=>pHome()},
- sell:{t:'بيع',f:()=>pSell()},
- buy:{t:'+ فاتورة شراء',a:1,f:()=>pBuy()},
+ sell:{t:'بيع',h:1,f:()=>pSell()},
+ buy:{t:'+ فاتورة شراء',a:1,h:1,f:()=>pBuy()},
  sales:{t:'فواتير البيع',f:()=>pSales('بيع')},
  purch:{t:'فواتير الشراء',a:1,f:()=>pSales('شراء')},
  inv:{t:'المخزون',f:()=>pInv()},
@@ -129,10 +129,10 @@ const PAGES={
 };
 function shell(){
   $('#app').innerHTML=`<header><img src="${LOGO}" alt="DEMO" style="width:44px;height:44px;border-radius:50%;background:#000"><h1>DEMO</h1><small>إدارة المحل</small><span class="sp"></span><small>${esc(me.name||me.email)} ${isAdmin()?'(مدير)':''}</small><button class="btn g s" onclick="logout()">خروج</button></header>
-  <nav>${Object.entries(PAGES).filter(([k,v])=>!v.a||isAdmin()).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</nav><main id="main"></main>`;
+  <nav>${Object.entries(PAGES).filter(([k,v])=>!v.h&&(!v.a||isAdmin())).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</nav><main id="main"></main>`;
 }
 function go(p){
-  page=p;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===p));
+  page=p;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===({sell:'sales',buy:'purch'}[p]||p)));
   timers=timers.filter(t=>{if(t.pg){clearInterval(t.id);return false}return true});
   $('#main').innerHTML='<p class="muted">...جاري التحميل</p>';
   sb.rpc('ping',{p_page:PAGES[p].t});
@@ -273,7 +273,7 @@ async function printSale(id){
 /* ---------- sales list ---------- */
 async function pSales(kind='بيع'){
   const d1=new Date();d1.setDate(1);
-  main(`<div class="card"><div class="row"><div><label>من</label><input type="date" id="d1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="d2" value="${ymd(new Date())}"></div><div><label>بحث بالعميل / الرقم</label><input id="qq"></div>${kind==="بيع"?`<label class="fit" style="margin-top:20px"><input type="checkbox" id="dbt" style="width:auto"> الآجل غير المسدد (الجديدة)</label>`:""}</div><div class="tw" id="sl"></div></div>`);
+  main(`<div class="card"><div class="row"><div><label>من</label><input type="date" id="d1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="d2" value="${ymd(new Date())}"></div><div><label>بحث بالعميل / الرقم</label><input id="qq"></div>${kind==="بيع"?`<label class="fit" style="margin-top:20px"><input type="checkbox" id="dbt" style="width:auto"> الآجل غير المسدد (الجديدة)</label>`:""}<button class="btn fit" style="margin-top:20px" onclick="go('${kind==='بيع'?'sell':'buy'}')">${kind==='بيع'?'+ فاتورة بيع جديدة':'+ فاتورة شراء جديدة'}</button></div><div class="tw" id="sl"></div></div>`);
   let OLD=[];if(isAdmin()){await loadParties()}
   const nm=id=>(PARTIES&&PARTIES.find(x=>x.old_id===id)||{}).name||'';
   const draw=async()=>{const a=new Date($('#d1').value+'T00:00:00'),b=new Date($('#d2').value+'T23:59:59');
@@ -413,7 +413,7 @@ const RSTAT=['استلام','جاري الفحص','في انتظار موافق�
 const SERV=['تنظيف','ابجريد','صيانة ماذربورد','تغيير كيبورد','تغيير سوكت شحن','تغيير هاوسنج','لحام هاوسنج','تغيير شاشة','صيانة عامة','تسطيب ويندوز / برامج','أخرى'];
 const rcol=s=>({'تم التسليم':'green','جاهز للتسليم':'blue','ملغي':'red'}[s]||'amber');
 async function pRep(){
-  await loadFunds();
+  await loadFunds();if(isAdmin()&&!PARTIES)await loadParties();
   const reps=await run(sb.from('repairs').select('*').order('id',{ascending:false}).limit(1000));
   window._reps=reps;
   main(`<div class="card"><div class="row"><input id="q" placeholder="بحث (اسم / موبايل / جهاز / رقم)"><select id="qs" class="fit"><option value="open">المفتوحة</option><option value="">الكل</option>${RSTAT.map(s=>`<option>${s}</option>`).join('')}</select><button class="btn" onclick="repForm()">+ جهاز جديد</button></div><div class="tw"><table><thead><tr><th>#</th><th>التاريخ</th><th>العميل</th><th>الجهاز</th><th>الخدمة</th><th>السعر</th><th>الحالة</th></tr></thead><tbody id="tb"></tbody></table></div></div>`);
@@ -426,11 +426,13 @@ function repForm(id){
   const r=id?window._reps.find(x=>x.id===id):{status:'استلام',price:0,deposit:0,parts_cost:0,service:SERV[0]};
   modal(`<h2>${id?'صيانة #'+id:'جهاز جديد للصيانة'}</h2><form id="rf"><div class="f2">${fld('اسم العميل','customer',r.customer,'text','required')}${fld('الموبايل','phone',r.phone,'tel','class="ltr"')}${fld('الجهاز (النوع / الموديل)','device',r.device,'text','required')}${fld('سيريال الجهاز','serial',r.serial,'text','class="ltr"')}${sel('الخدمة','service',SERV,r.service)}${sel('الحالة','status',RSTAT,r.status)}${fld('السعر المتفق عليه','price',r.price,'number','step="any"')}${fld('عربون مدفوع','deposit',r.deposit,'number','step="any"')}${fld('تكلفة قطع الغيار','parts_cost',r.parts_cost,'number','step="any"')}${fld('الفني','tech',r.tech)}</div>
   <label>المشكلة</label><textarea name="problem">${esc(r.problem)}</textarea><label>ملاحظات</label><textarea name="notes">${esc(r.notes)}</textarea>
-  ${id?`<div class="f2">${fld('المبلغ المستلم الآن (المتبقي)','recv',Math.max(0,(r.price||0)-(r.deposit||0)-(r.received||0)),'number','step="any"')}<div><label>الدفع إلى (صندوق)</label><select name="fund">${fundOpts()}</select></div></div><p class="muted">يتسجل في الصندوق عند اختيار حالة "تم التسليم" وحفظ.</p>`:''}<p class="row"><button class="btn">حفظ</button>${id?`<button type="button" class="btn g" onclick="printRep(${id})">طباعة إيصال</button>`:''}<button type="button" class="btn g" onclick="closeModal()">إغلاق</button>${id&&isAdmin()?`<button type="button" class="btn r" onclick="delRep(${id})">حذف</button>`:''}</p></form>`);
+  ${id?`<div class="f2">${fld('المبلغ المستلم الآن (المتبقي)','recv',Math.max(0,(r.price||0)-(r.deposit||0)-(r.received||0)),'number','step="any"')}<div><label>الدفع إلى (صندوق)</label><select name="fund">${fundOpts()}</select></div></div><p class="muted">يتسجل في الصندوق عند اختيار حالة "تم التسليم" وحفظ.</p>${isAdmin()&&PARTIES?`<div class="f2">${fld('مبلغ آجل على حساب العميل','cr',0,'number','step="any"')}<div><label>حساب العميل (للآجل)</label><select name="cparty"><option value="">-</option>${PARTIES.filter(p=>p.old_id>0&&p.grp!=='الصناديق').map(p=>`<option value="${p.old_id}">${esc(p.name)}</option>`).join('')}</select></div></div>`:''}<p class="muted">الربح = السعر - تكلفة القطع = <b id="rprof">${money((r.price||0)-(r.parts_cost||0))}</b></p>`:''}<p class="row"><button class="btn">حفظ</button>${id?`<button type="button" class="btn g" onclick="printRep(${id})">طباعة إيصال</button>`:''}<button type="button" class="btn g" onclick="closeModal()">إغلاق</button>${id&&isAdmin()?`<button type="button" class="btn r" onclick="delRep(${id})">حذف</button>`:''}</p></form>`);
+  {const up=()=>{const e=$('#rprof'),F=$('#rf');if(e&&F)e.textContent=money(num(F.price.value)-num(F.parts_cost.value))};['price','parts_cost'].forEach(n=>{const x=$('#rf')[n];if(x)x.oninput=up})}
   $('#rf').onsubmit=async e=>{e.preventDefault();const f=readForm(e.target);
     const row={customer:f.customer,phone:f.phone,device:f.device,serial:f.serial,service:f.service,status:f.status,price:num(f.price),deposit:num(f.deposit),parts_cost:num(f.parts_cost),tech:f.tech,problem:f.problem,notes:f.notes,updated_at:new Date().toISOString()};
     if(f.status==='تم التسليم'&&!(r.delivered_at))row.delivered_at=new Date().toISOString();
     if(id)await run(sb.from('repairs').update(row).eq('id',id));else{row.user_email=me.email;await run(sb.from('repairs').insert(row))}
+    if(id&&f.status==='تم التسليم'&&num(f.cr)>0&&f.cparty)await run(sb.rpc('repair_credit',{p_id:id,p_party:+f.cparty,p_amount:num(f.cr)}));
     if(id&&f.status==='تم التسليم'&&num(f.recv)>0)await run(sb.rpc('repair_receive',{p_id:id,p_amount:num(f.recv),p_fund:+f.fund}));
     closeModal();toast('تم الحفظ');pRep()};
 }
