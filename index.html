@@ -117,6 +117,7 @@ const PAGES={
  buy:{t:'+ فاتورة شراء',h:1,f:()=>pBuy()},
  sales:{t:'فواتير البيع',f:()=>pSales('بيع')},
  purch:{t:'فواتير الشراء',f:()=>pSales('شراء')},
+ ser:{t:'فحص سيريال',f:()=>pSer()},
  inv:{t:'المخزون',f:()=>pInv()},
  count:{t:'الجرد',f:()=>pCount()},
  rep:{t:'الصيانة',f:()=>pRep()},
@@ -273,6 +274,18 @@ async function printSale(id){
   const s=await run(sb.from('sales').select('*,sale_lines(*),sale_pays(*)').eq('id',id).single());
   const w=window.open('','_blank');if(!w)return;
   w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>فاتورة ${id}</title><style>body{font-family:Tahoma;max-width:380px;margin:auto;font-size:13px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px dashed #999;padding:4px;text-align:right}h2,p{text-align:center;margin:4px}</style></head><body><div style="text-align:center"><img src="${LOGO}" style="width:90px;height:90px;border-radius:50%"></div><h2>DEMO Computer Store</h2><p>٧ ميدان سفنكس - كمبيوتر مول - الدور الأول F3<br>01100605106</p><hr><p>فاتورة #${s.id} - ${fdt(s.created_at)}</p><p>${esc(s.customer||'')}</p><table><tr><th>الصنف</th><th>كمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>${s.sale_lines.map(l=>`<tr><td>${esc(l.name)}${l.serial?'<br><small>S/N: '+esc(l.serial)+'</small>':''}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.price*l.qty)}</td></tr>`).join('')}</table><h3>الإجمالي: ${money(s.total)}</h3><p>المدفوع: ${money(s.paid)} ${s.total>s.paid?' - المتبقي: '+money(s.total-s.paid):''}</p>${paysTxt(s)}<p>شكرا لتعاملكم معنا</p><script>setTimeout(()=>print(),300)<\/script></body></html>`);w.document.close();
+}
+
+/* ---------- serial lookup ---------- */
+async function pSer(){
+  main(`<div class="card"><h2>فحص سيريال (هل اتباع من المحل؟)</h2><p class="muted">اكتب السيريال كامل أو جزء منه (3 حروف على الأقل). البحث في فواتير البيع المسجلة بالبرنامج الجديد وفي أصناف المخزون.</p><div class="row"><input id="srq" class="ltr" placeholder="السيريال" style="min-width:260px" autocomplete="off"><button class="btn" id="srg">بحث</button></div><div id="srr" style="margin-top:12px"></div></div>`);
+  const go=async()=>{const q=$('#srq').value.trim();if(q.length<3)return toast('اكتب 3 حروف على الأقل',1);
+    const r=await run(sb.rpc('serial_lookup',{p_q:q}));let h='';
+    h+=r.sold.length?r.sold.map(x=>`<div class="card" style="border:2px solid ${x.exact?'#16a34a':'#d97706'};margin:6px 0"><b style="color:${x.exact?'#16a34a':'#b45309'}">${x.exact?'✔ اتباع من المحل (تطابق كامل)':'تطابق جزئي'}</b><br>فاتورة بيع <b>#${x.sale_id}</b> | ${fdt(x.day)}<br>العميل: ${esc(x.customer||'-')}<br>الصنف: ${esc(x.item)} (كمية ${x.qty}) | السعر: ${money(x.price)}<br>السيريال: <span class="ltr">${esc(x.serial)}</span><br>البائع: ${esc(x.by||'-')}${x.last_buy?'<br><span class="muted">آخر شراء لهذا الصنف للمحل: '+fdt(x.last_buy).split(',')[0]+' (السيريال غير مسجل في فواتير الشراء)</span>':''}<br><button class="btn g s" style="margin-top:6px" onclick="saleView(${x.sale_id})">عرض الفاتورة</button></div>`).join(''):'<div class="card" style="border:2px solid #dc2626"><b style="color:#dc2626">لا يوجد في فواتير البيع المسجلة</b></div>';
+    if(r.stock.length)h+='<div class="card"><b>موجود الآن في المخزون (لم يُبَع بعد)</b>'+r.stock.map(x=>`<br>${esc(x.item)} | <span class="ltr">${esc(x.serial)}</span> | كمية ${x.qty}${x.exact?' (تطابق كامل)':''}`).join('')+'</div>';
+    h+='<p class="muted">ملاحظة: الفواتير القديمة (قبل البرنامج الجديد) ما كان فيها سيريال مسجل، فمش هتظهر هنا. الفاتورة الملغاة بتتمسح ومش بتظهر. الإرجاع غير مسجل كحالة مستقلة.</p>';
+    $('#srr').innerHTML=h};
+  $('#srg').onclick=go;$('#srq').onkeydown=e=>{if(e.key==='Enter')go()};$('#srq').focus();
 }
 
 /* ---------- sales list ---------- */
