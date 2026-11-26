@@ -459,7 +459,6 @@ async function pExp(){
 /* ---------- accounts ---------- */
 const UNP_FROM='2023-12-16';
 async function unposted(){
-  const box=$('#unp');if(!box)return;box.innerHTML='<div class="card muted">جاري حساب الأرباح غير المرحلة...</div>';
   try{
     const a=new Date(UNP_FROM+'T00:00:00').toISOString(),to=ymd(new Date());
     const [sales,reps,exps,oldS,oldR,dr]=await Promise.all([
@@ -476,14 +475,12 @@ async function unposted(){
     let ptn=0,chr=0;dr.forEach(r=>{const v=Number(r.debit)-Number(r.credit);if(r.party_id===96||r.party_id===107)chr+=v;else ptn+=v});
     const biz=rev-cogs+rp-ex,unp=biz-ptn-chr;
     const col=v=>`style="color:${v>=0?'var(--green)':'var(--red)'}"`;
-    box.innerHTML=`<div class="card" style="border:2px solid var(--green,#2a7)"><h2>الأرباح غير المرحلة (من ${UNP_FROM.split('-').reverse().join('/')} لحد النهاردة)</h2>
-    <div class="grid"><div class="stat"><span>صافي الربح قبل توزيعات الشركاء والجمعيات</span><b ${col(biz)}>${money(biz)}</b></div><div class="stat"><span>أرباح الشركاء (موزعة)</span><b>- ${money(ptn)}</b></div><div class="stat"><span>جمعية روضة (١ و٢)</span><b>- ${money(chr)}</b></div><div class="stat"><span>الأرباح غير المرحلة</span><b ${col(unp)}>${money(unp)}</b></div></div>
-    <details class="muted" style="margin-top:8px"><summary>تفاصيل الفرق عن البرنامج القديم</summary><p>الرقم هنا أدق من البرنامج القديم لأنه يحسب تكلفة كل صنف وقت بيعه، وصححنا خطأ تكلفة في فاتورة 1395.</p></details></div>`;
-  }catch(e){box.innerHTML='<div class="card muted">تعذر حساب الأرباح غير المرحلة</div>';console.error(e)}
+    window._unp=unp;const ue=$('#unpv');if(ue){ue.textContent=money(unp);ue.style.color=unp>=0?'var(--green)':'var(--red)'}
+  }catch(e){console.error(e)}
 }
 async function pAcc(){
   const d1=new Date();d1.setDate(1);
-  main(`<div class="card"><div class="row"><div><label>من</label><input type="date" id="d1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="d2" value="${ymd(new Date())}"></div></div></div><div id="unp"></div><div id="ar"></div>`);
+  main(`<div class="card"><div class="row"><div><label>من</label><input type="date" id="d1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="d2" value="${ymd(new Date())}"></div></div></div><div id="ar"></div>`);
   unposted();
   const draw=async()=>{
     const a=new Date($('#d1').value+'T00:00:00').toISOString(),b=new Date($('#d2').value+'T23:59:59').toISOString();
@@ -504,11 +501,12 @@ async function pAcc(){
     const stockCost=items.reduce((s,i)=>s+i.qty*(i.item_costs?.cost||0),0),stockPrice=items.reduce((s,i)=>s+i.qty*i.price,0);
     const owed=debts.reduce((s,x)=>s+Number(x.balance),0);
     const gp=rev-cogs,net=gp+rp-ex;
-    $('#ar').innerHTML=`<div class="grid"><div class="stat"><span>مبيعات بضاعة</span><b>${money(rev)}</b></div><div class="stat"><span>إيراد صيانة (مسلّمة + القديمة)</span><b>${money(rr)}</b></div><div class="stat"><span>ربح المبيعات</span><b>${money(gp)}</b></div><div class="stat"><span>ربح الصيانة</span><b>${money(rp)}</b></div><div class="stat"><span>المصروفات</span><b>${money(ex)}</b></div><div class="stat"><span>صافي الربح</span><b style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</b></div></div>
+    $('#ar').innerHTML=`<div class="grid"><div class="stat"><span>مبيعات بضاعة</span><b>${money(rev)}</b></div><div class="stat"><span>إيراد صيانة (مسلّمة + القديمة)</span><b>${money(rr)}</b></div><div class="stat"><span>ربح المبيعات</span><b>${money(gp)}</b></div><div class="stat"><span>ربح الصيانة</span><b>${money(rp)}</b></div><div class="stat"><span>المصروفات</span><b>${money(ex)}</b></div><div class="stat"><span>صافي الربح</span><b style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</b></div><div class="stat"><span>أرباح غير مرحلة</span><b id="unpv">...</b></div></div>
     <div class="grid"><div class="stat"><span>قيمة المخزون (بالتكلفة)</span><b>${money(stockCost)}</b></div><div class="stat"><span>قيمة المخزون (بسعر البيع)</span><b>${money(stockPrice)}</b></div><div class="stat"><span>ديون العملاء (من حسابات العملاء)</span><b>${money(owed)}</b></div></div>
     <div class="card"><h2>المصروفات حسب النوع</h2>${Object.entries(byc).map(([k,v])=>`<span class="tag" style="margin:2px">${esc(k)}: ${money(v)}</span>`).join('')||'<span class="muted">لا يوجد</span>'}</div>
     <div class="card"><h2>يوميا</h2><div class="tw"><table><tr><th>اليوم</th><th>الإيراد</th><th>الربح</th><th>المصروف</th><th>الصافي</th></tr>${Object.keys(day).sort().reverse().map(k=>`<tr><td>${k}</td><td>${money(day[k].s)}</td><td>${money(day[k].p)}</td><td>${money(day[k].e)}</td><td>${money(day[k].p-day[k].e)}</td></tr>`).join('')}</table></div></div>
-    <p class="muted">ملاحظة: الربح = سعر البيع - تكلفة الصنف وقت البيع (الفواتير القديمة محسوبة بمتوسط التكلفة كما في البرنامج القديم). إيراد الصيانة القديم من حساب "صيانة الأجهزة" في البرنامج القديم (الإيراد ناقص المدفوع للقطع). الأصناف اللي ملهاش تكلفة مسجلة بتتحسب تكلفتها صفر، سجل التكلفة في المخزون عشان الربح يطلع صح.</p>`};
+    <p class="muted">ملاحظة: الربح = سعر البيع - تكلفة الصنف وقت البيع (الفواتير القديمة محسوبة بمتوسط التكلفة كما في البرنامج القديم). إيراد الصيانة القديم من حساب "صيانة الأجهزة" في البرنامج القديم (الإيراد ناقص المدفوع للقطع). الأصناف اللي ملهاش تكلفة مسجلة بتتحسب تكلفتها صفر، سجل التكلفة في المخزون عشان الربح يطلع صح.</p>`;
+    if(window._unp!==undefined){const ue=$('#unpv');if(ue){ue.textContent=money(window._unp);ue.style.color=window._unp>=0?'var(--green)':'var(--red)'}}};
   $('#d1').onchange=draw;$('#d2').onchange=draw;draw();
 }
 
