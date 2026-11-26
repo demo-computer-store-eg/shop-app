@@ -116,6 +116,8 @@ const PAGES={
  rep:{t:'الصيانة',f:()=>pRep()},
  exp:{t:'المصروفات',a:1,f:()=>pExp()},
  acc:{t:'الحسابات',a:1,f:()=>pAcc()},
+ bal:{t:'الأرصدة (له / عليه)',a:1,f:()=>pBal()},
+ oldb:{t:'فواتير البرنامج القديم',a:1,f:()=>pOldB()},
  act:{t:'النشاط',a:1,f:()=>pAct()},
  staff:{t:'الموظفين',a:1,f:()=>pStaff()},
  me:{t:'حسابي',f:()=>pMe()}
@@ -269,6 +271,53 @@ async function saleView(id){
 }
 async function payForm(id,rem){const v=prompt('المبلغ المدفوع الآن (المتبقي '+rem+')',rem);if(v===null)return;await run(sb.rpc('add_payment',{p_sale:id,p_amount:num(v)}));closeModal();toast('تم');pSales()}
 async function cancelSale(id){if(!confirm('إلغاء الفاتورة وإرجاع الأصناف للمخزون؟'))return;await run(sb.rpc('cancel_sale',{p_sale:id}));closeModal();toast('تم الإلغاء');pSales()}
+
+
+/* ---------- old program accounts (balances / statements / old invoices) ---------- */
+let PARTIES=null;
+async function loadParties(){PARTIES=await run(sb.from('parties').select('*').order('name').limit(1000));return PARTIES}
+const grpOrder=['العملاء','الموردون','المسحوبات ','الصناديق','البنوك','راس المال','اخرى'];
+async function pBal(){
+  await loadParties();
+  const grps=[...new Set(PARTIES.map(p=>p.grp||'أخرى'))].sort();
+  main(`<div class="card"><h2>الأرصدة من البرنامج القديم</h2><p class="muted">عليه = مدين للمحل (المحل له عنده) | له = دائن (المحل عليه له). الأرصدة كما في آخر يوم في البرنامج القديم (26/11/2026).</p>
+  <div class="row"><div><label>نوع الحساب</label><select id="bg"><option value="">الكل</option>${grps.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div><label>بحث بالاسم</label><input id="bq"></div><label class="fit" style="margin-top:20px"><input type="checkbox" id="bz" checked style="width:auto"> إخفاء الأرصدة الصفرية</label></div><div id="bs"></div><div class="tw" id="bl"></div></div>`);
+  const draw=()=>{const g=$('#bg').value,q=$('#bq').value.trim().toLowerCase(),hz=$('#bz').checked;
+    const L=PARTIES.filter(p=>(!g||(p.grp||'أخرى')===g)&&(!q||p.name.toLowerCase().includes(q))&&(!hz||Math.abs(p.balance)>0.004)&&(p.old_id>0||p.old_id===-3));
+    const on=L.filter(p=>p.balance>0).reduce((s,p)=>s+Number(p.balance),0),lh=-L.filter(p=>p.balance<0).reduce((s,p)=>s+Number(p.balance),0);
+    $('#bs').innerHTML=`<div class="grid"><div class="stat"><span>مجموع "عليه" (مدين للمحل)</span><b>${money(on)}</b></div><div class="stat"><span>مجموع "له" (المحل مدين)</span><b>${money(lh)}</b></div><div class="stat"><span>عدد الحسابات</span><b>${L.length}</b></div></div>`;
+    $('#bl').innerHTML=`<table><tr><th>الحساب</th><th>النوع</th><th>عليه</th><th>له</th></tr>${L.sort((a,b)=>Math.abs(b.balance)-Math.abs(a.balance)).map(p=>`<tr class="click" onclick="stmt(${p.old_id})"><td>${esc(p.name)} ${p.phone?'<span class="ltr muted">'+esc(p.phone)+'</span>':''}</td><td>${esc(p.grp||'')}</td><td>${p.balance>0?money(p.balance):''}</td><td>${p.balance<0?money(-p.balance):''}</td></tr>`).join('')}</table>`};
+  ['bg','bq','bz'].forEach(i=>$('#'+i).oninput=draw);draw();
+}
+async function stmt(id,off=0,append=false){
+  if(!PARTIES)await loadParties();
+  const p=PARTIES.find(x=>x.old_id===id);const N=300;
+  const rows=await run(sb.from('ledger').select('*').eq('party_id',id).order('day',{ascending:false}).order('id',{ascending:false}).range(off,off+N-1));
+  if(!append){stmt.run=Number(p.balance);stmt.html=''}
+  let h='';
+  for(const r of rows){const net=Number(r.debit)-Number(r.credit);
+    const nm=r.counter_id!=null?(PARTIES.find(x=>x.old_id===r.counter_id)||{}).name||'':'';
+    h+=`<tr><td>${esc(r.day)}</td><td>${esc((r.remarks||'')+(nm?' ← '+nm:''))}</td><td>${r.debit>0?money(r.debit):''}</td><td>${r.credit>0?money(r.credit):''}</td><td>${money(stmt.run)}</td></tr>`;
+    stmt.run-=net}
+  stmt.html+=h;
+  modal(`<h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')} | الرصيد الحالي: <b>${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</b></p><div class="tw" style="max-height:60vh;overflow:auto"><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${stmt.html}</table></div>
+  <p class="row">${rows.length===N?`<button class="btn g" onclick="stmt(${id},${off+N},true)">عرض الأقدم</button>`:'<span class="muted">انتهى الكشف</span>'}<button class="btn g" onclick="window.print()">طباعة</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+}
+async function pOldB(){
+  await loadParties();const d1=new Date();d1.setDate(d1.getDate()-30);
+  main(`<div class="card"><h2>فواتير البرنامج القديم (بيع وشراء)</h2><div class="row"><div><label>من</label><input type="date" id="o1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="o2" value="${ymd(new Date())}"></div><div><label>النوع</label><select id="ok"><option value="">الكل</option><option>بيع</option><option>شراء</option></select></div><div><label>اسم الحساب</label><input id="oq"></div></div><div id="os"></div><div class="tw" id="ol"></div></div>`);
+  const draw=async()=>{let q=sb.from('old_bills').select('*').gte('day',$('#o1').value).lte('day',$('#o2').value).order('day',{ascending:false}).order('old_id',{ascending:false}).limit(1000);
+    if($('#ok').value)q=q.eq('kind',$('#ok').value);let L=await run(q);const t=$('#oq').value.trim().toLowerCase();
+    const nm=id=>(PARTIES.find(x=>x.old_id===id)||{}).name||'';if(t)L=L.filter(b=>nm(b.party_id).toLowerCase().includes(t));
+    $('#os').innerHTML=`<p>عدد الفواتير: <b>${L.length}</b> | الإجمالي: <b>${money(L.reduce((s,x)=>s+Number(x.amount),0))}</b></p>`;
+    $('#ol').innerHTML=`<table><tr><th>رقم</th><th>التاريخ</th><th>النوع</th><th>الحساب</th><th>الدفع</th><th>الإجمالي</th></tr>${L.map(b=>`<tr class="click" onclick="oldBill(${b.old_id})"><td>${esc(b.bill_no)}</td><td>${esc(b.day)} <span class="muted">${esc(b.tm||'')}</span></td><td>${esc(b.kind)}</td><td>${esc(nm(b.party_id))}</td><td>${esc(b.method)}</td><td>${money(b.amount)}</td></tr>`).join('')}</table>`};
+  ['o1','o2','ok'].forEach(i=>$('#'+i).onchange=draw);$('#oq').oninput=draw;draw();
+}
+async function oldBill(id){
+  const b=await run(sb.from('old_bills').select('*,old_bill_lines(*)').eq('old_id',id).single());
+  const pn=(PARTIES.find(x=>x.old_id===b.party_id)||{}).name||'';
+  modal(`<h2>${esc(b.kind)} #${esc(b.bill_no)}</h2><p>${esc(b.day)} ${esc(b.tm||'')} | ${esc(pn)} | ${esc(b.method)}</p><table><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>الإجمالي</th></tr>${b.old_bill_lines.map(l=>`<tr><td>${esc(l.item_name)}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.qty*l.price)}</td></tr>`).join('')}</table><h3>الإجمالي ${money(b.amount)}${b.discount>0?' | خصم '+money(b.discount):''}</h3>${b.remarks?'<p>'+esc(b.remarks)+'</p>':''}<p class="row"><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+}
 
 /* ---------- stocktake ---------- */
 async function pCount(){
