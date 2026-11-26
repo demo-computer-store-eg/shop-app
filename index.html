@@ -149,16 +149,17 @@ async function actBox(n){
 async function pHome(){
   const draw=async()=>{
     const t0=new Date();t0.setHours(0,0,0,0);const iso=t0.toISOString();
-    const [sales,exps,reps,items]=await Promise.all([
+    const [sales,exps,reps,items,oldS]=await Promise.all([
       run(sb.from('sales').select('total,sale_lines(qty,sale_costs(cost))').gte('created_at',iso)),
       run(sb.from('expenses').select('amount').eq('day',ymd(new Date()))),
       run(sb.from('repairs').select('id,status').not('status','in','("تم التسليم","ملغي")')),
-      run(sb.from('items').select('name,qty,min_qty').order('qty').limit(2000))]);
-    const tot=sales.reduce((s,x)=>s+x.total,0);
-    const cost=sales.reduce((s,x)=>s+x.sale_lines.reduce((a,l)=>a+l.qty*(l.sale_costs?.cost||0),0),0);
+      run(sb.from('items').select('name,qty,min_qty').order('qty').limit(2000)),
+      run(sb.from('old_bills').select('amount,old_bill_lines(qty,cost)').eq('kind','بيع').eq('day',ymd(new Date())))]);
+    const tot=sales.reduce((s,x)=>s+x.total,0)+oldS.reduce((s,x)=>s+Number(x.amount),0);
+    const cost=sales.reduce((s,x)=>s+x.sale_lines.reduce((a,l)=>a+l.qty*(l.sale_costs?.cost||0),0),0)+oldS.reduce((s,x)=>s+x.old_bill_lines.reduce((a,l)=>a+l.qty*l.cost,0),0);
     const ex=exps.reduce((s,x)=>s+x.amount,0);
     const low=items.filter(i=>i.min_qty>0&&i.qty<=i.min_qty).slice(0,12);
-    main(`<div class="grid"><div class="stat"><span>مبيعات اليوم (${sales.length} فاتورة)</span><b>${money(tot)}</b></div><div class="stat"><span>ربح اليوم</span><b>${money(tot-cost)}</b></div><div class="stat"><span>مصروفات اليوم</span><b>${money(ex)}</b></div><div class="stat"><span>أجهزة في الصيانة</span><b>${reps.length}</b></div></div>
+    main(`<div class="grid"><div class="stat"><span>مبيعات اليوم (${sales.length+oldS.length} فاتورة)</span><b>${money(tot)}</b></div><div class="stat"><span>ربح اليوم</span><b>${money(tot-cost)}</b></div><div class="stat"><span>مصروفات اليوم</span><b>${money(ex)}</b></div><div class="stat"><span>أجهزة في الصيانة</span><b>${reps.length}</b></div></div>
     ${await presenceBox()}
     <div class="card"><h2>أصناف قاربت على النفاد</h2>${low.length?low.map(i=>`<span class="tag red" style="margin:2px">${esc(i.name)}: ${i.qty}</span>`).join(' '):'<span class="muted">لا يوجد</span>'}</div>
     ${await actBox(15)}`);
@@ -397,24 +398,26 @@ async function pAcc(){
   main(`<div class="card"><div class="row"><div><label>من</label><input type="date" id="d1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="d2" value="${ymd(new Date())}"></div></div></div><div id="ar"></div>`);
   const draw=async()=>{
     const a=new Date($('#d1').value+'T00:00:00').toISOString(),b=new Date($('#d2').value+'T23:59:59').toISOString();
-    const [sales,reps,exps,items,debts]=await Promise.all([
+    const [sales,reps,exps,items,debts,oldS]=await Promise.all([
       run(sb.from('sales').select('created_at,total,sale_lines(qty,sale_costs(cost))').gte('created_at',a).lte('created_at',b).limit(5000)),
       run(sb.from('repairs').select('delivered_at,price,parts_cost').eq('status','تم التسليم').gte('delivered_at',a).lte('delivered_at',b).limit(5000)),
       run(sb.from('expenses').select('day,category,amount').gte('day',$('#d1').value).lte('day',$('#d2').value).limit(5000)),
       run(sb.from('items').select('qty,price,item_costs(cost)').gt('qty',0).limit(5000)),
-      run(sb.from('sales').select('total,paid').limit(10000))]);
+      run(sb.from('parties').select('balance').eq('grp','العملاء').gt('balance',0).limit(1000)),
+      run(sb.from('old_bills').select('day,amount,old_bill_lines(qty,cost)').eq('kind','بيع').gte('day',$('#d1').value).lte('day',$('#d2').value).limit(1000))]);
     const day={};const D=k=>day[k]||(day[k]={s:0,p:0,e:0});
     let rev=0,cogs=0;sales.forEach(s=>{const c=s.sale_lines.reduce((x,l)=>x+l.qty*(l.sale_costs?.cost||0),0);rev+=s.total;cogs+=c;const d=D(ymd(s.created_at));d.s+=s.total;d.p+=s.total-c});
+    oldS.forEach(o=>{const c=o.old_bill_lines.reduce((x,l)=>x+l.qty*l.cost,0),t=Number(o.amount);rev+=t;cogs+=c;const d=D(o.day);d.s+=t;d.p+=t-c});
     let rr=0,rp=0;reps.forEach(r=>{rr+=r.price;rp+=r.price-r.parts_cost;const d=D(ymd(r.delivered_at));d.s+=r.price;d.p+=r.price-r.parts_cost});
     let ex=0;const byc={};exps.forEach(x=>{ex+=x.amount;byc[x.category]=(byc[x.category]||0)+x.amount;D(x.day).e+=x.amount});
     const stockCost=items.reduce((s,i)=>s+i.qty*(i.item_costs?.cost||0),0),stockPrice=items.reduce((s,i)=>s+i.qty*i.price,0);
-    const owed=debts.reduce((s,x)=>s+x.total-x.paid,0);
+    const owed=debts.reduce((s,x)=>s+Number(x.balance),0);
     const gp=rev-cogs,net=gp+rp-ex;
     $('#ar').innerHTML=`<div class="grid"><div class="stat"><span>مبيعات بضاعة</span><b>${money(rev)}</b></div><div class="stat"><span>إيراد صيانة (مسلّمة)</span><b>${money(rr)}</b></div><div class="stat"><span>ربح المبيعات</span><b>${money(gp)}</b></div><div class="stat"><span>ربح الصيانة</span><b>${money(rp)}</b></div><div class="stat"><span>المصروفات</span><b>${money(ex)}</b></div><div class="stat"><span>صافي الربح</span><b style="color:${net>=0?'var(--green)':'var(--red)'}">${money(net)}</b></div></div>
-    <div class="grid"><div class="stat"><span>قيمة المخزون (بالتكلفة)</span><b>${money(stockCost)}</b></div><div class="stat"><span>قيمة المخزون (بسعر البيع)</span><b>${money(stockPrice)}</b></div><div class="stat"><span>ديون العملاء (كل الفترات)</span><b>${money(owed)}</b></div></div>
+    <div class="grid"><div class="stat"><span>قيمة المخزون (بالتكلفة)</span><b>${money(stockCost)}</b></div><div class="stat"><span>قيمة المخزون (بسعر البيع)</span><b>${money(stockPrice)}</b></div><div class="stat"><span>ديون العملاء (من حسابات العملاء)</span><b>${money(owed)}</b></div></div>
     <div class="card"><h2>المصروفات حسب النوع</h2>${Object.entries(byc).map(([k,v])=>`<span class="tag" style="margin:2px">${esc(k)}: ${money(v)}</span>`).join('')||'<span class="muted">لا يوجد</span>'}</div>
     <div class="card"><h2>يوميا</h2><div class="tw"><table><tr><th>اليوم</th><th>الإيراد</th><th>الربح</th><th>المصروف</th><th>الصافي</th></tr>${Object.keys(day).sort().reverse().map(k=>`<tr><td>${k}</td><td>${money(day[k].s)}</td><td>${money(day[k].p)}</td><td>${money(day[k].e)}</td><td>${money(day[k].p-day[k].e)}</td></tr>`).join('')}</table></div></div>
-    <p class="muted">ملاحظة: الربح = سعر البيع - تكلفة الصنف وقت البيع. الأصناف اللي ملهاش تكلفة مسجلة بتتحسب تكلفتها صفر، سجل التكلفة في المخزون عشان الربح يطلع صح.</p>`};
+    <p class="muted">ملاحظة: الربح = سعر البيع - تكلفة الصنف وقت البيع (الفواتير القديمة محسوبة بمتوسط التكلفة كما في البرنامج القديم). الأصناف اللي ملهاش تكلفة مسجلة بتتحسب تكلفتها صفر، سجل التكلفة في المخزون عشان الربح يطلع صح.</p>`};
   $('#d1').onchange=draw;$('#d2').onchange=draw;draw();
 }
 
