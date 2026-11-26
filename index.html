@@ -86,7 +86,7 @@ async function run(p){const r=await p;if(r.error){toast(ERR(r.error),1);throw r.
 /* ---------- auth ---------- */
 function showLogin(signup){
   timers.forEach(t=>clearInterval(t.id||t));timers=[];
-  $('#app').innerHTML=`<div class="login"><div style="text-align:center"><img src="${LOGO}" style="width:110px;height:110px;border-radius:50%"></div><h1>DEMO</h1><p class="muted" style="text-align:center">نظام إدارة المحل</p>
+  $('#app').innerHTML=`<div class="login"><div style="text-align:center"><img src="${LOGO}" style="width:110px;height:110px;border-radius:50%"></div><h1>DEMO Computer Store</h1>
   <form id="lf">${signup?fld('الاسم','name'):''}${signup?fld('البريد الإلكتروني','email','','email','required autocomplete="username"'):fld('اسم المستخدم أو البريد','email','','text','required autocomplete="username" autocapitalize="none" class="ltr"')}${fld('كلمة السر','password','','password','required minlength="6" autocomplete="current-password"')}
   ${signup?'':'<label class="fit" style="display:flex;gap:6px;align-items:center;margin:8px 0"><input type="checkbox" name="rem" style="width:auto"> تذكرني على هذا الجهاز</label>'}
   <p><button class="btn" style="width:100%">${signup?'إنشاء حساب':'دخول'}</button></p></form>
