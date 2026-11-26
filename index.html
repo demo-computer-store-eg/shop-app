@@ -117,7 +117,6 @@ const PAGES={
  buy:{t:'+ فاتورة شراء',h:1,f:()=>pBuy()},
  sales:{t:'فواتير البيع',f:()=>pSales('بيع')},
  purch:{t:'فواتير الشراء',f:()=>pSales('شراء')},
- drw:{t:'درج DEMO',f:()=>pDrw()},
  ser:{t:'فحص سيريال',f:()=>pSer()},
  inv:{t:'المخزون',f:()=>pInv()},
  count:{t:'الجرد',f:()=>pCount()},
@@ -127,7 +126,8 @@ const PAGES={
  bal:{t:'الأرصدة (له / عليه)',a:1,f:()=>pBal()},
  act:{t:'النشاط',a:1,f:()=>pAct()},
  staff:{t:'الموظفين',a:1,f:()=>pStaff()},
- me:{t:'حسابي',f:()=>pMe()}
+ me:{t:'حسابي',f:()=>pMe()},
+ drw:{t:'رصيد DEMO',f:()=>pDrw()}
 };
 function shell(){
   $('#app').innerHTML=`<header><img src="${LOGO}" alt="DEMO" style="width:44px;height:44px;border-radius:50%;background:#000"><h1>DEMO</h1><small>إدارة المحل</small><span class="sp"></span><small>${esc(me.name||me.email)} ${isAdmin()?'(مدير)':''}</small><button class="btn g s" onclick="logout()">خروج</button></header>
@@ -283,7 +283,7 @@ async function printSale(id){
 /* ---------- drawer ---------- */
 async function pDrw(){
   const r=await run(sb.rpc('drawer_info'));const b=Number(r.balance);
-  main(`<div class="card"><h2>درج ${esc(r.name||'DEMO')}</h2><div class="grid"><div class="stat"><span>الرصيد الحالي في الدرج</span><b>${money(b)}</b></div></div><p class="muted">للعرض فقط. قارن الرقم ده بالفلوس الموجودة فعلا في الدرج.</p>
+  main(`<div class="card"><h2>رصيد ${esc(r.name||'DEMO')}</h2><div class="grid"><div class="stat"><span>الرصيد الحالي في الدرج</span><b>${money(b)}</b></div></div><p class="muted">للعرض فقط. قارن الرقم ده بالفلوس الموجودة فعلا في الدرج.</p>
   <h3>آخر الحركات</h3><div class="tw"><table><tr><th>التاريخ</th><th>البيان</th><th>داخل</th><th>خارج</th><th>الرصيد بعدها</th></tr>${r.rows.map(x=>`<tr><td>${esc(x.day)}</td><td>${esc(x.remarks||'')}</td><td>${x.debit>0?money(x.debit):''}</td><td>${x.credit>0?money(x.credit):''}</td><td>${money(x.bal)}</td></tr>`).join('')}</table></div></div>`);
 }
 
