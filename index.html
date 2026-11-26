@@ -157,7 +157,7 @@ async function pHome(){
     const tot=sales.reduce((s,x)=>s+x.total,0);
     const cost=sales.reduce((s,x)=>s+x.sale_lines.reduce((a,l)=>a+l.qty*(l.sale_costs?.cost||0),0),0);
     const ex=exps.reduce((s,x)=>s+x.amount,0);
-    const low=items.filter(i=>i.qty<=i.min_qty).slice(0,12);
+    const low=items.filter(i=>i.min_qty>0&&i.qty<=i.min_qty).slice(0,12);
     main(`<div class="grid"><div class="stat"><span>مبيعات اليوم (${sales.length} فاتورة)</span><b>${money(tot)}</b></div><div class="stat"><span>ربح اليوم</span><b>${money(tot-cost)}</b></div><div class="stat"><span>مصروفات اليوم</span><b>${money(ex)}</b></div><div class="stat"><span>أجهزة في الصيانة</span><b>${reps.length}</b></div></div>
     ${await presenceBox()}
     <div class="card"><h2>أصناف قاربت على النفاد</h2>${low.length?low.map(i=>`<span class="tag red" style="margin:2px">${esc(i.name)}: ${i.qty}</span>`).join(' '):'<span class="muted">لا يوجد</span>'}</div>
