@@ -264,7 +264,7 @@ async function pSell(){
     $('#tt').textContent=money(cart.reduce((s,l)=>s+l.qty*l.price,0))};
   let CL=[];try{const r=await sb.rpc('customer_list');CL=r.data||[]}catch(e){}
   $('#cl').innerHTML=CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('');
-  $('[name=cust]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=cust]').value.trim());if(m&&m.phone&&!$('[name=ph]').value)$('[name=ph]').value=m.phone};
+  $('[name=cust]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=cust]').value.trim());if(m)$('[name=ph]').value=m.phone||''};
   window._dc=drawC;drawC();
   window.addFree=()=>{const n=prompt('اسم البند');if(!n)return;const p=num(prompt('السعر'));cart.push({name:n,qty:1,price:p});drawC()};
   $('#sq').oninput=()=>{const q=$('#sq').value.trim().toLowerCase();if(!q){$('#sr').innerHTML='';return}
@@ -280,7 +280,7 @@ async function pSell(){
     else if(cred||paid!==tot){if(!nm0)return toast('اكتب اسم العميل للبيع الآجل',1);if(!confirm('العميل "'+nm0+'" غير موجود في الحسابات. إضافته كعميل جديد؟'))return;party=await run(sb.rpc('new_customer',{p_name:nm0,p_phone:f.ph}))}
     $('#go').disabled=true;
     try{const id=await run(sb.rpc('make_sale',{p_party:party,p_customer:f.cust,p_phone:f.ph,p_method:pays?'دفع مجزأ':cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_fund:cred?null:parseInt(f.meth),p_paid:paid,p_note:f.note,p_pays:pays,p_lines:cart.map(l=>({item_id:l.item_id||null,name:l.name,qty:l.qty,price:l.price,serial:(l.serials||[]).slice(0,l.qty).map(x=>(x||'').trim()).filter(Boolean).join(' ، ')}))}));
-      cart=[];toast('تم البيع - فاتورة #'+id);printSale(id);pSell()}catch(e){$('#go').disabled=false}};
+      if(party&&f.ph.trim()){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}cart=[];toast('تم البيع - فاتورة #'+id);printSale(id);pSell()}catch(e){$('#go').disabled=false}};
 }
 async function printSale(id){
   const s=await run(sb.from('sales').select('*,sale_lines(*),sale_pays(*)').eq('id',id).single());
@@ -359,9 +359,9 @@ async function pBal(){
   await loadParties();await loadFunds();
   const grps=[...new Set(PARTIES.map(p=>p.grp||'أخرى'))].sort();
   main(`<div class="card"><h2>الأرصدة من البرنامج القديم</h2><div class="row" style="margin-bottom:8px"><div><label>الصندوق الافتراضي (بيع / قبض / دفع)</label><select id="dfs">${fundOpts()}</select></div><button class="btn g" id="nfb" style="margin-top:20px">+ صندوق جديد (تحويل بنكي / انستاباي / محفظة...)</button></div>${isAdmin()?'<div class="card" style="margin:8px 0"><b>تحويل بين الصناديق</b> <span class="muted">(لا يُحسب إيراد ولا مصروف)</span><div class="row"><div><label>من</label><select id="tf1">'+fundOpts()+'</select></div><div><label>إلى</label><select id="tf2">'+fundOpts()+'</select></div><div><label>المبلغ</label><input id="tfa" type="number" step="any"></div><div><label>التاريخ</label><input id="tfd" type="date" value="'+ymd(new Date())+'"></div><div><label>ملاحظة</label><input id="tfn"></div><button class="btn" id="tfg" style="margin-top:20px">تحويل</button></div><div id="tfl"></div></div>':''}<p class="muted">عليه = مدين للمحل (المحل له عنده) | له = دائن (المحل عليه له). الأرصدة كما في آخر يوم في البرنامج القديم (26/11/2026).</p>
-  <div class="row"><div><label>نوع الحساب</label><select id="bg"><option value="">الكل</option>${grps.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div><label>بحث بالاسم</label><input id="bq"></div><label class="fit" style="margin-top:20px"><input type="checkbox" id="bz" checked style="width:auto"> إخفاء الأرصدة الصفرية</label></div><div id="bs"></div><div class="tw" id="bl"></div></div>`);
+  <div class="row"><div><label>نوع الحساب</label><select id="bg"><option value="">الكل</option>${grps.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div><label>بحث بالاسم أو الموبايل</label><input id="bq"></div><label class="fit" style="margin-top:20px"><input type="checkbox" id="bz" checked style="width:auto"> إخفاء الأرصدة الصفرية</label></div><div id="bs"></div><div class="tw" id="bl"></div></div>`);
   const draw=()=>{const g=$('#bg').value,q=$('#bq').value.trim().toLowerCase(),hz=$('#bz').checked;
-    const L=PARTIES.filter(p=>(!g||(p.grp||'أخرى')===g)&&(!q||p.name.toLowerCase().includes(q))&&(!hz||Math.abs(p.balance)>0.004)&&(p.old_id>0||p.old_id===-3));
+    const L=PARTIES.filter(p=>(!g||(p.grp||'أخرى')===g)&&(!q||p.name.toLowerCase().includes(q)||(p.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')||'§')||(p.phone||'').includes(q))&&(!hz||Math.abs(p.balance)>0.004)&&(p.old_id>0||p.old_id===-3));
     const on=L.filter(p=>p.balance>0).reduce((s,p)=>s+Number(p.balance),0),lh=-L.filter(p=>p.balance<0).reduce((s,p)=>s+Number(p.balance),0);
     $('#bs').innerHTML=`<div class="grid"><div class="stat"><span>مجموع "عليه" (مدين للمحل)</span><b>${money(on)}</b></div><div class="stat"><span>مجموع "له" (المحل مدين)</span><b>${money(lh)}</b></div><div class="stat"><span>عدد الحسابات</span><b>${L.length}</b></div></div>`;
     $('#bl').innerHTML=`<table><tr><th>الحساب</th><th>النوع</th><th>عليه</th><th>له</th></tr>${L.sort((a,b)=>Math.abs(b.balance)-Math.abs(a.balance)).map(p=>`<tr class="click" onclick="stmt(${p.old_id})"><td>${esc(p.name)} ${p.phone?'<span class="ltr muted">'+esc(p.phone)+'</span>':''}</td><td>${esc(p.grp||'')}</td><td>${p.balance>0?money(p.balance):''}</td><td>${p.balance<0?money(-p.balance):''}</td></tr>`).join('')}</table>`};
@@ -387,9 +387,10 @@ async function stmt(id,off=0,append=false){
     h+=`<tr><td>${esc(r.day)}</td><td>${esc((r.remarks||'')+(nm?' ← '+nm:''))}</td><td>${r.debit>0?money(r.debit):''}</td><td>${r.credit>0?money(r.credit):''}</td><td>${money(stmt.run)}</td></tr>`;
     stmt.run-=net}
   stmt.html+=h;
-  modal(`<h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')} | الرصيد الحالي: <b>${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</b></p><div class="tw" style="max-height:60vh;overflow:auto"><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${stmt.html}</table></div>
+  modal(`<h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')} | موبايل: <b class="ltr">${esc(p.phone||'غير مسجل')}</b>${['العملاء','الموردون'].includes((p.grp||'').trim())&&isAdmin()?` <button class="btn g s" onclick="editPhone(${id})">تعديل الموبايل</button>`:''} | الرصيد الحالي: <b>${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</b></p><div class="tw" style="max-height:60vh;overflow:auto"><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${stmt.html}</table></div>
   ${me&&me.active!==false?`<div class="card" style="margin:8px 0"><b>تسجيل حركة على الحساب (بتتجمع كلها في نفس الكشف وتتصافى مع الرصيد)</b><div class="row"><select id="ek" class="fit"><option value="pay_in">قبضت منه / اقترضت منه (له)</option><option value="pay_out">دفعت له / أقرضته (عليه)</option><option value="buy_from">اشتريت منه بضاعة (له)</option><option value="sell_to">بعت له بضاعة (عليه)</option></select><input id="ea" type="number" step="any" placeholder="المبلغ"><select id="ef2" class="fit" title="الصندوق (للقبض والدفع)">${fundOpts()}</select><input id="en" placeholder="ملاحظة"><button class="btn" onclick="addEntry(${id})">تسجيل</button></div></div>`:''}<p class="row">${rows.length===N?`<button class="btn g" onclick="stmt(${id},${off+N},true)">عرض الأقدم</button>`:'<span class="muted">انتهى الكشف</span>'}<button class="btn g" onclick="window.print()">طباعة</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
 }
+async function editPhone(id){const p=PARTIES.find(x=>x.old_id===id);const v=prompt('موبايل '+p.name+' (سيبه فاضي لمسحه)',p.phone||'');if(v===null)return;await run(sb.rpc('set_party_phone',{p_party:id,p_phone:v}));toast('تم');await loadParties();stmt(id)}
 async function addEntry(id){const k=$('#ek').value,a=num($('#ea').value),n=$('#en').value;if(!(a>0))return toast('اكتب المبلغ',1);
   const p=PARTIES.find(x=>x.old_id===id);const cash=(k==='pay_in'||k==='pay_out');if(!confirm('تسجيل '+$('#ek').selectedOptions[0].text+' بمبلغ '+money(a)+' على حساب '+p.name+(cash?' - الصندوق: '+$('#ef2').selectedOptions[0].text:'')+'؟'))return;
   await run(sb.rpc('add_entry',{p_party:id,p_kind:k,p_amount:a,p_note:n,p_fund:cash?parseInt($('#ef2').value):null}));toast('تم التسجيل');await loadParties();stmt(id)}
@@ -421,7 +422,7 @@ async function pBuy(){
   <h3 style="margin:14px 0 6px;border-top:1px solid #ddd;padding-top:12px">الدفع</h3>
   <div class="f2">${isAdmin()?`<div><label>الدفع من</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>`:`<div><label>الدفع من</label><select name="meth"><option value="82">DEMO (الدرج)</option><option value="credit">آجل (على حساب المورد)</option></select></div>`}${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}</div>
   ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="bt" class="ltr">0</span></h2><button class="btn" id="bgo">تأكيد الشراء</button></div>`);
-  $('[name=sup]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=sup]').value.trim());if(m&&m.phone&&!$('[name=ph]').value)$('[name=ph]').value=m.phone};
+  $('[name=sup]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=sup]').value.trim());if(m)$('[name=ph]').value=m.phone||''};
   const draw=()=>{$('#bb').innerHTML=BUY.map((l,i)=>`<tr><td>${esc(l.name)} ${l.isnew?'<span class="tag amber">جديد</span>':''} <span class="muted ltr">${esc(l.serial||'')}</span></td><td><input type="number" min="1" value="${l.qty}" onchange="BUY[${i}].qty=Math.max(1,parseInt(this.value)||1);window._bd()"></td><td><input type="number" step="any" value="${l.cost}" onchange="BUY[${i}].cost=num(this.value);window._bd()"></td><td class="ltr">${money(l.qty*l.cost)}</td><td><button class="btn g s" onclick="BUY.splice(${i},1);window._bd()">✕</button></td></tr>`).join('');
     $('#bt').textContent=money(BUY.reduce((s,l)=>s+l.qty*l.cost,0))};
   window._bd=draw;draw();
@@ -431,14 +432,14 @@ async function pBuy(){
     $('#br').querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=items.find(x=>x.id===b.dataset.id);const ex=BUY.find(l=>l.item_id===i.id);if(ex)ex.qty++;else BUY.push({item_id:i.id,name:i.name,serial:i.serial,qty:1,cost:0});$('#bq').value='';$('#br').innerHTML='';draw()})};
   $('#bnew').onclick=()=>{const n=prompt('اسم الصنف الجديد');if(!n)return;const c=num(prompt('سعر الشراء للوحدة'));const p=num(prompt('سعر البيع'));const q=parseInt(prompt('الكمية','1'))||1;const sr=prompt('السيريال (اتركه فاضي لو مفيش)')||'';BUY.push({name:n,serial:sr,price:p,qty:q,cost:c,isnew:true});draw()};
   $('#bgo').onclick=async()=>{if(!BUY.length)return toast('الفاتورة فارغة',1);const tot=BUY.reduce((s,l)=>s+l.qty*l.cost,0);
-    const f={sup:$('[name=sup]').value,meth:$('[name=meth]').value,paid:$('[name=paid]').value,note:$('[name=note]').value,ph:$('[name=ph]').value.trim()};f.note=(f.ph?'موبايل المورد: '+f.ph+(f.note?' | ':''):'')+f.note;
+    const f={sup:$('[name=sup]').value,meth:$('[name=meth]').value,paid:$('[name=paid]').value,note:$('[name=note]').value,ph:$('[name=ph]').value.trim()};
     const cred=f.meth==='credit';let paid=f.paid===''?(cred?0:tot):num(f.paid);if(!isAdmin())paid=Math.min(paid,tot);
     const nm0=f.sup.trim(),mm=CL.find(c=>c.name.trim()===nm0);let party=null;
     if(mm)party=mm.old_id;
     else if(cred||paid<tot){if(!nm0)return toast('اكتب اسم المورد للشراء الآجل',1);if(!confirm('المورد "'+nm0+'" غير موجود في الحسابات. إضافته كمورد جديد؟'))return;party=await run(sb.rpc('new_supplier',{p_name:nm0}))}
     $('#bgo').disabled=true;
     try{const id=await run(sb.rpc('make_purchase',{p_party:party,p_supplier:nm0,p_method:cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_paid:paid,p_fund:cred?null:parseInt(f.meth),p_note:f.note,p_lines:BUY.map(l=>({item_id:l.item_id||null,name:l.name,serial:l.serial||'',price:l.price||0,qty:l.qty,cost:l.cost}))}));
-      BUY=[];toast('تم تسجيل فاتورة الشراء #'+id);pBuy()}catch(e){$('#bgo').disabled=false}};
+      if(party&&f.ph){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}BUY=[];toast('تم تسجيل فاتورة الشراء #'+id);pBuy()}catch(e){$('#bgo').disabled=false}};
 }
 
 /* ---------- stocktake ---------- */
