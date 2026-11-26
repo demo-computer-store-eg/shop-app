@@ -259,7 +259,7 @@ async function pSell(){
     const cred=f.meth==='credit';let paid=f.paid===''?tot:num(f.paid);if(cred&&f.paid==='')paid=0;
     const nm0=f.cust.trim(),mm=CL.find(c=>c.name.trim()===nm0);let party=null;
     if(mm)party=mm.old_id;
-    else if(cred||paid<tot){if(!nm0)return toast('اكتب اسم العميل للبيع الآجل',1);if(!confirm('العميل "'+nm0+'" غير موجود في الحسابات. إضافته كعميل جديد؟'))return;party=await run(sb.rpc('new_customer',{p_name:nm0,p_phone:f.ph}))}
+    else if(cred||paid!==tot){if(!nm0)return toast('اكتب اسم العميل للبيع الآجل',1);if(!confirm('العميل "'+nm0+'" غير موجود في الحسابات. إضافته كعميل جديد؟'))return;party=await run(sb.rpc('new_customer',{p_name:nm0,p_phone:f.ph}))}
     $('#go').disabled=true;
     try{const id=await run(sb.rpc('make_sale',{p_party:party,p_customer:f.cust,p_phone:f.ph,p_method:cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_fund:cred?null:parseInt(f.meth),p_paid:paid,p_note:f.note,p_lines:cart.map(l=>({item_id:l.item_id||null,name:l.name,qty:l.qty,price:l.price}))}));
       cart=[];toast('تم البيع - فاتورة #'+id);printSale(id);pSell()}catch(e){$('#go').disabled=false}};
@@ -413,6 +413,7 @@ const RSTAT=['استلام','جاري الفحص','في انتظار موافق�
 const SERV=['تنظيف','ابجريد','صيانة ماذربورد','تغيير كيبورد','تغيير سوكت شحن','تغيير هاوسنج','لحام هاوسنج','تغيير شاشة','صيانة عامة','تسطيب ويندوز / برامج','أخرى'];
 const rcol=s=>({'تم التسليم':'green','جاهز للتسليم':'blue','ملغي':'red'}[s]||'amber');
 async function pRep(){
+  await loadFunds();
   const reps=await run(sb.from('repairs').select('*').order('id',{ascending:false}).limit(1000));
   window._reps=reps;
   main(`<div class="card"><div class="row"><input id="q" placeholder="بحث (اسم / موبايل / جهاز / رقم)"><select id="qs" class="fit"><option value="open">المفتوحة</option><option value="">الكل</option>${RSTAT.map(s=>`<option>${s}</option>`).join('')}</select><button class="btn" onclick="repForm()">+ جهاز جديد</button></div><div class="tw"><table><thead><tr><th>#</th><th>التاريخ</th><th>العميل</th><th>الجهاز</th><th>الخدمة</th><th>السعر</th><th>الحالة</th></tr></thead><tbody id="tb"></tbody></table></div></div>`);
@@ -425,11 +426,12 @@ function repForm(id){
   const r=id?window._reps.find(x=>x.id===id):{status:'استلام',price:0,deposit:0,parts_cost:0,service:SERV[0]};
   modal(`<h2>${id?'صيانة #'+id:'جهاز جديد للصيانة'}</h2><form id="rf"><div class="f2">${fld('اسم العميل','customer',r.customer,'text','required')}${fld('الموبايل','phone',r.phone,'tel','class="ltr"')}${fld('الجهاز (النوع / الموديل)','device',r.device,'text','required')}${fld('سيريال الجهاز','serial',r.serial,'text','class="ltr"')}${sel('الخدمة','service',SERV,r.service)}${sel('الحالة','status',RSTAT,r.status)}${fld('السعر المتفق عليه','price',r.price,'number','step="any"')}${fld('عربون مدفوع','deposit',r.deposit,'number','step="any"')}${fld('تكلفة قطع الغيار','parts_cost',r.parts_cost,'number','step="any"')}${fld('الفني','tech',r.tech)}</div>
   <label>المشكلة</label><textarea name="problem">${esc(r.problem)}</textarea><label>ملاحظات</label><textarea name="notes">${esc(r.notes)}</textarea>
-  <p class="row"><button class="btn">حفظ</button>${id?`<button type="button" class="btn g" onclick="printRep(${id})">طباعة إيصال</button>`:''}<button type="button" class="btn g" onclick="closeModal()">إغلاق</button>${id&&isAdmin()?`<button type="button" class="btn r" onclick="delRep(${id})">حذف</button>`:''}</p></form>`);
+  ${id?`<div class="f2">${fld('المبلغ المستلم الآن (المتبقي)','recv',Math.max(0,(r.price||0)-(r.deposit||0)-(r.received||0)),'number','step="any"')}<div><label>الدفع إلى (صندوق)</label><select name="fund">${fundOpts()}</select></div></div><p class="muted">يتسجل في الصندوق عند اختيار حالة "تم التسليم" وحفظ.</p>`:''}<p class="row"><button class="btn">حفظ</button>${id?`<button type="button" class="btn g" onclick="printRep(${id})">طباعة إيصال</button>`:''}<button type="button" class="btn g" onclick="closeModal()">إغلاق</button>${id&&isAdmin()?`<button type="button" class="btn r" onclick="delRep(${id})">حذف</button>`:''}</p></form>`);
   $('#rf').onsubmit=async e=>{e.preventDefault();const f=readForm(e.target);
     const row={customer:f.customer,phone:f.phone,device:f.device,serial:f.serial,service:f.service,status:f.status,price:num(f.price),deposit:num(f.deposit),parts_cost:num(f.parts_cost),tech:f.tech,problem:f.problem,notes:f.notes,updated_at:new Date().toISOString()};
     if(f.status==='تم التسليم'&&!(r.delivered_at))row.delivered_at=new Date().toISOString();
     if(id)await run(sb.from('repairs').update(row).eq('id',id));else{row.user_email=me.email;await run(sb.from('repairs').insert(row))}
+    if(id&&f.status==='تم التسليم'&&num(f.recv)>0)await run(sb.rpc('repair_receive',{p_id:id,p_amount:num(f.recv),p_fund:+f.fund}));
     closeModal();toast('تم الحفظ');pRep()};
 }
 async function delRep(id){if(!confirm('حذف؟'))return;await run(sb.from('repairs').delete().eq('id',id));closeModal();pRep()}
