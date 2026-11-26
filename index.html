@@ -238,7 +238,7 @@ async function pSell(){
   const drawC=()=>{$('#cb').innerHTML=cart.map((l,i)=>`<tr><td>${esc(l.name)} <span class="muted ltr">${esc(l.serial||'')}</span></td><td><input type="number" min="1" ${l.max?`max="${l.max}"`:''} value="${l.qty}" onchange="cart[${i}].qty=Math.max(1,parseInt(this.value)||1);${l.max?`cart[${i}].qty=Math.min(cart[${i}].qty,${l.max});`:''}window._dc()"></td><td><input type="number" step="any" value="${l.price}" onchange="cart[${i}].price=num(this.value);window._dc()"></td><td class="ltr">${money(l.qty*l.price)}</td><td><button class="btn g s" onclick="cart.splice(${i},1);window._dc()">✕</button></td></tr>`).join('');
     $('#tt').textContent=money(cart.reduce((s,l)=>s+l.qty*l.price,0))};
   let CL=[];try{const r=await sb.rpc('customer_list');CL=r.data||[]}catch(e){}
-  $('#cl').innerHTML=CL.map(c=>`<option value="${esc(c.name)}">`).join('');
+  $('#cl').innerHTML=CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('');
   $('[name=cust]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=cust]').value.trim());if(m&&m.phone&&!$('[name=ph]').value)$('[name=ph]').value=m.phone};
   window._dc=drawC;drawC();
   window.addFree=()=>{const n=prompt('اسم البند');if(!n)return;const p=num(prompt('السعر'));cart.push({name:n,qty:1,price:p});drawC()};
@@ -318,8 +318,11 @@ async function stmt(id,off=0,append=false){
     stmt.run-=net}
   stmt.html+=h;
   modal(`<h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')} | الرصيد الحالي: <b>${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</b></p><div class="tw" style="max-height:60vh;overflow:auto"><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${stmt.html}</table></div>
-  <p class="row">${rows.length===N?`<button class="btn g" onclick="stmt(${id},${off+N},true)">عرض الأقدم</button>`:'<span class="muted">انتهى الكشف</span>'}<button class="btn g" onclick="window.print()">طباعة</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+  ${me&&me.active!==false?`<div class="card" style="margin:8px 0"><b>تسجيل حركة على الحساب (بتتجمع كلها في نفس الكشف وتتصافى مع الرصيد)</b><div class="row"><select id="ek" class="fit"><option value="pay_in">قبضت منه / اقترضت منه (له)</option><option value="pay_out">دفعت له / أقرضته (عليه)</option><option value="buy_from">اشتريت منه بضاعة (له)</option><option value="sell_to">بعت له بضاعة (عليه)</option></select><input id="ea" type="number" step="any" placeholder="المبلغ"><input id="en" placeholder="ملاحظة"><button class="btn" onclick="addEntry(${id})">تسجيل</button></div></div>`:''}<p class="row">${rows.length===N?`<button class="btn g" onclick="stmt(${id},${off+N},true)">عرض الأقدم</button>`:'<span class="muted">انتهى الكشف</span>'}<button class="btn g" onclick="window.print()">طباعة</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
 }
+async function addEntry(id){const k=$('#ek').value,a=num($('#ea').value),n=$('#en').value;if(!(a>0))return toast('اكتب المبلغ',1);
+  const p=PARTIES.find(x=>x.old_id===id);if(!confirm('تسجيل '+$('#ek').selectedOptions[0].text+' بمبلغ '+money(a)+' على حساب '+p.name+'؟'))return;
+  await run(sb.rpc('add_entry',{p_party:id,p_kind:k,p_amount:a,p_note:n}));toast('تم التسجيل');await loadParties();stmt(id)}
 async function printOld(id){
   if(!PARTIES)await loadParties();
   const b=await run(sb.from('old_bills').select('*,old_bill_lines(*)').eq('old_id',id).single());
