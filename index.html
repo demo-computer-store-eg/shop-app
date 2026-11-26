@@ -114,13 +114,13 @@ async function logout(){await sb.auth.signOut();me=null;showLogin()}
 const PAGES={
  home:{t:'لوحة التحكم',a:1,f:()=>pHome()},
  sell:{t:'بيع',h:1,f:()=>pSell()},
- buy:{t:'+ فاتورة شراء',a:1,h:1,f:()=>pBuy()},
+ buy:{t:'+ فاتورة شراء',h:1,f:()=>pBuy()},
  sales:{t:'فواتير البيع',f:()=>pSales('بيع')},
- purch:{t:'فواتير الشراء',a:1,f:()=>pSales('شراء')},
+ purch:{t:'فواتير الشراء',f:()=>pSales('شراء')},
  inv:{t:'المخزون',f:()=>pInv()},
  count:{t:'الجرد',f:()=>pCount()},
  rep:{t:'الصيانة',f:()=>pRep()},
- exp:{t:'المصروفات',a:1,f:()=>pExp()},
+ exp:{t:'المصروفات',f:()=>pExp()},
  acc:{t:'الحسابات',a:1,f:()=>pAcc()},
  bal:{t:'الأرصدة (له / عليه)',a:1,f:()=>pBal()},
  act:{t:'النشاط',a:1,f:()=>pAct()},
@@ -255,11 +255,11 @@ async function pSell(){
     const L=items.filter(i=>[i.name,i.model,i.serial,i.category].join(' ').toLowerCase().includes(q)).slice(0,10);
     $('#sr').innerHTML=L.map(i=>`<button class="btn g s" style="margin:2px" data-id="${i.id}">${esc(i.name)} | ${money(i.price)} | متاح ${i.qty}${i.serial?' | '+esc(i.serial):''}</button>`).join('')||'<span class="muted">لا نتائج</span>';
     $('#sr').querySelectorAll('button').forEach(b=>b.onclick=()=>{const i=items.find(x=>x.id===b.dataset.id);const ex=cart.find(l=>l.item_id===i.id);if(ex)ex.qty=Math.min(ex.qty+1,i.qty);else cart.push({item_id:i.id,name:i.name,serial:i.serial,qty:1,max:i.qty,price:i.price});$('#sq').value='';$('#sr').innerHTML='';drawC()})};
-  $('#go').onclick=async()=>{if(!cart.length)return toast('الفاتورة فارغة',1);const tot=cart.reduce((s,l)=>s+l.qty*l.price,0);const f={cust:$('[name=cust]').value,ph:$('[name=ph]').value,meth:$('[name=meth]').value,paid:$('[name=paid]').value,note:$('[name=note]').value};
+  $('#go').onclick=async()=>{if(!cart.length)return toast('الفاتورة فارغة',1);const tot=cart.reduce((s,l)=>s+l.qty*l.price,0);const f={cust:$('[name=cust]').value,ph:$('[name=ph]').value,meth:$('[name=meth]').value,paid:($('[name=paid]')||{value:''}).value,note:$('[name=note]').value};
     const cred=f.meth==='credit';let paid=f.paid===''?tot:num(f.paid);if(cred&&f.paid==='')paid=0;
     const nm0=f.cust.trim(),mm=CL.find(c=>c.name.trim()===nm0);let party=null;
     if(mm)party=mm.old_id;
-    else if(cred||paid!==tot){if(!nm0)return toast('اكتب اسم العميل للبيع الآجل',1);if(!confirm('العميل "'+nm0+'" غير موجود في الحسابات. إضافته كعميل جديد؟'))return;party=await run(sb.rpc('new_customer',{p_name:nm0,p_phone:f.ph}))}
+    else if(isAdmin()&&(cred||paid!==tot)){if(!nm0)return toast('اكتب اسم العميل للبيع الآجل',1);if(!confirm('العميل "'+nm0+'" غير موجود في الحسابات. إضافته كعميل جديد؟'))return;party=await run(sb.rpc('new_customer',{p_name:nm0,p_phone:f.ph}))}
     $('#go').disabled=true;
     try{const id=await run(sb.rpc('make_sale',{p_party:party,p_customer:f.cust,p_phone:f.ph,p_method:cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_fund:cred?null:parseInt(f.meth),p_paid:paid,p_note:f.note,p_lines:cart.map(l=>({item_id:l.item_id||null,name:l.name,qty:l.qty,price:l.price}))}));
       cart=[];toast('تم البيع - فاتورة #'+id);printSale(id);pSell()}catch(e){$('#go').disabled=false}};
@@ -280,7 +280,7 @@ async function pSales(kind='بيع'){
     const kd=kind,t=$('#qq').value.trim().toLowerCase(),dbt=!!($('#dbt')&&$('#dbt').checked);
     let S=[];if(kd!=='شراء'){S=await run(sb.from('sales').select('*').gte('created_at',a.toISOString()).lte('created_at',b.toISOString()).order('id',{ascending:false}).limit(1000));
       S=S.map(x=>({src:'n',id:x.id,no:String(x.id),t:new Date(x.created_at).getTime(),when:fdt(x.created_at),who:x.customer,total:x.total,paid:x.paid,method:x.method,by:(x.user_email||'').split('@')[0],kind:'بيع'}))}
-    let P=[];if(kd==='شراء'&&isAdmin()){P=(await run(sb.from('purchases').select('*').gte('created_at',a.toISOString()).lte('created_at',b.toISOString()).order('id',{ascending:false}).limit(1000))).map(x=>({src:'p',id:x.id,no:'ج'+x.id,t:new Date(x.created_at).getTime(),when:fdt(x.created_at),who:x.supplier,total:Number(x.total),paid:Number(x.paid),method:x.method,by:(x.user_email||'').split('@')[0],kind:'شراء'}))}
+    let P=[];if(kd==='شراء'){P=(await run(sb.from('purchases').select('*').gte('created_at',a.toISOString()).lte('created_at',b.toISOString()).order('id',{ascending:false}).limit(1000))).map(x=>({src:'p',id:x.id,no:'ج'+x.id,t:new Date(x.created_at).getTime(),when:fdt(x.created_at),who:x.supplier,total:Number(x.total),paid:Number(x.paid),method:x.method,by:(x.user_email||'').split('@')[0],kind:'شراء'}))}
     let O=[];if(isAdmin()&&!dbt){let q=sb.from('old_bills').select('*').gte('day',$('#d1').value).lte('day',$('#d2').value).order('day',{ascending:false}).order('old_id',{ascending:false}).limit(1000);if(kd)q=q.eq('kind',kd);
       O=(await run(q)).map(x=>({src:'o',id:x.old_id,no:x.bill_no,t:new Date(x.day+'T'+(x.tm||'00:00:00')).getTime(),when:fd(x.day)+' '+(x.tm||'').slice(0,5),who:nm(x.party_id),total:Number(x.amount),paid:null,method:x.method,by:'البرنامج القديم',kind:x.kind}))}
     let L=S.concat(P,O);if(dbt)L=L.filter(s=>s.paid<s.total);
@@ -294,7 +294,7 @@ async function purView(id){
   const p=await run(sb.from('purchases').select('*,purchase_lines(*)').eq('id',id).single());
   modal(`<h2>فاتورة شراء #${p.id}</h2><p>${fdt(p.created_at)} | ${esc(p.supplier||'')} | ${esc(p.method||'')} | ${esc(p.user_email||'')}</p><table><tr><th>الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>${p.purchase_lines.map(l=>`<tr><td>${esc(l.name)}</td><td>${l.qty}</td><td>${money(l.cost)}</td><td>${money(l.qty*l.cost)}</td></tr>`).join('')}</table>
   <h3>الإجمالي ${money(p.total)} | المدفوع ${money(p.paid)} | المتبقي ${money(p.total-p.paid)}</h3>${p.note?'<p>'+esc(p.note)+'</p>':''}
-  <p class="row"><button class="btn g" onclick="printPur(${p.id})">طباعة</button><button class="btn r" onclick="cancelPur(${p.id})">إلغاء الفاتورة (خصم من المخزون)</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+  <p class="row"><button class="btn g" onclick="printPur(${p.id})">طباعة</button>${isAdmin()?`<button class="btn r" onclick="cancelPur(${p.id})">إلغاء الفاتورة (خصم من المخزون)</button>`:''}<button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
 }
 async function printPur(id){
   const p=await run(sb.from('purchases').select('*,purchase_lines(*)').eq('id',id).single());
@@ -371,7 +371,7 @@ async function pBuy(){
   main(`<div class="card"><h2>فاتورة شراء جديدة</h2><input id="bq" placeholder="ابحث عن صنف موجود (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="br" style="margin:8px 0"></div>
   <p><button class="btn g s" id="bnew">+ صنف جديد (غير مسجل في المخزون)</button></p>
   <div class="tw"><table><thead><tr><th>الصنف</th><th style="width:80px">الكمية</th><th style="width:120px">سعر الشراء للوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody id="bb"></tbody></table></div>
-  <div class="f2"><div><label>المورد</label><input name="sup" list="bl" autocomplete="off" placeholder="اختر من الحسابات أو اكتب اسم"><datalist id="bl">${CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('')}</datalist></div><div><label>الدفع من</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}${fld('ملاحظة','note')}</div>
+  <div class="f2"><div><label>المورد</label><input name="sup" list="bl" autocomplete="off" placeholder="اختر من الحسابات أو اكتب اسم"><datalist id="bl">${CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('')}</datalist></div>${isAdmin()?`<div><label>الدفع من</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}`:`<div><label>الدفع من</label><select name="meth"><option value="82">DEMO (الدرج)</option></select></div>`}${fld('ملاحظة','note')}</div>
   <h2>الإجمالي: <span id="bt" class="ltr">0</span></h2><button class="btn" id="bgo">تأكيد الشراء</button></div>`);
   const draw=()=>{$('#bb').innerHTML=BUY.map((l,i)=>`<tr><td>${esc(l.name)} ${l.isnew?'<span class="tag amber">جديد</span>':''} <span class="muted ltr">${esc(l.serial||'')}</span></td><td><input type="number" min="1" value="${l.qty}" onchange="BUY[${i}].qty=Math.max(1,parseInt(this.value)||1);window._bd()"></td><td><input type="number" step="any" value="${l.cost}" onchange="BUY[${i}].cost=num(this.value);window._bd()"></td><td class="ltr">${money(l.qty*l.cost)}</td><td><button class="btn g s" onclick="BUY.splice(${i},1);window._bd()">✕</button></td></tr>`).join('');
     $('#bt').textContent=money(BUY.reduce((s,l)=>s+l.qty*l.cost,0))};
@@ -384,7 +384,7 @@ async function pBuy(){
   $('#bgo').onclick=async()=>{if(!BUY.length)return toast('الفاتورة فارغة',1);const tot=BUY.reduce((s,l)=>s+l.qty*l.cost,0);
     const f={sup:$('[name=sup]').value,meth:$('[name=meth]').value,paid:$('[name=paid]').value,note:$('[name=note]').value};
     const cred=f.meth==='credit';let paid=f.paid===''?(cred?0:tot):num(f.paid);
-    const nm0=f.sup.trim(),mm=CL.find(c=>c.name.trim()===nm0);let party=null;
+    const nm0=f.sup.trim(),mm=isAdmin()?CL.find(c=>c.name.trim()===nm0):null;let party=null;
     if(mm)party=mm.old_id;
     else if(cred||paid<tot){if(!nm0)return toast('اكتب اسم المورد للشراء الآجل',1);if(!confirm('المورد "'+nm0+'" غير موجود في الحسابات. إضافته كمورد جديد؟'))return;party=await run(sb.rpc('new_supplier',{p_name:nm0}))}
     $('#bgo').disabled=true;
@@ -447,11 +447,11 @@ const ECATS=['مصاريف تشغيل','إيجار','كهرباء','مياه / �
 async function pExp(){
   await loadFunds();
   const d1=new Date();d1.setDate(1);
-  main(`<div class="card"><h2>مصروف جديد</h2><form id="ef"><div class="f2">${fld('التاريخ','day',ymd(new Date()),'date')}${sel('النوع','category',ECATS)}${fld('المبلغ','amount','','number','step="any" required')}${fld('ملاحظة','note')}<div><label>مدفوع من صندوق</label><select name="fund"><option value="">بدون (لا يؤثر على صندوق)</option>${fundOpts()}</select></div></div><p><button class="btn">إضافة</button></p></form></div>
+  main(`<div class="card"><h2>مصروف جديد</h2><form id="ef"><div class="f2">${fld('التاريخ','day',ymd(new Date()),'date',isAdmin()?'':'readonly')}${sel('النوع','category',ECATS)}${fld('المبلغ','amount','','number','step="any" required')}${fld('ملاحظة','note')}<div><label>مدفوع من صندوق</label><select name="fund">${isAdmin()?'<option value="">بدون (لا يؤثر على صندوق)</option>'+fundOpts():'<option value="82">DEMO (الدرج)</option>'}</select></div></div><p><button class="btn">إضافة</button></p></form></div>
   <div class="card"><div class="row"><div><label>من</label><input type="date" id="d1" value="${ymd(d1)}"></div><div><label>إلى</label><input type="date" id="d2" value="${ymd(new Date())}"></div></div><div class="tw" id="el"></div></div>`);
   $('#ef').onsubmit=async e=>{e.preventDefault();const f=readForm(e.target);await run(sb.rpc('add_expense',{p_day:f.day,p_cat:f.category,p_amount:num(f.amount),p_note:f.note,p_fund:f.fund?parseInt(f.fund):null}));toast('تم');e.target.amount.value='';e.target.note.value='';draw()};
   const draw=async()=>{const L=await run(sb.from('expenses').select('*').gte('day',$('#d1').value).lte('day',$('#d2').value).order('day',{ascending:false}).order('id',{ascending:false}));
-    $('#el').innerHTML=`<p>الإجمالي: <b>${money(L.reduce((s,x)=>s+x.amount,0))}</b></p><table><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr>${L.map(x=>`<tr><td>${fd(x.day)}</td><td>${esc(x.category)}</td><td>${money(x.amount)}</td><td>${esc(x.note)}</td><td><button class="btn g s" onclick="delExp(${x.id})">حذف</button></td></tr>`).join('')}</table>`};
+    $('#el').innerHTML=`<p>الإجمالي: <b>${money(L.reduce((s,x)=>s+x.amount,0))}</b></p><table><tr><th>التاريخ</th><th>النوع</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr>${L.map(x=>`<tr><td>${fd(x.day)}</td><td>${esc(x.category)}</td><td>${money(x.amount)}</td><td>${esc(x.note)}</td><td>${isAdmin()?`<button class="btn g s" onclick="delExp(${x.id})">حذف</button>`:''}</td></tr>`).join('')}</table>`};
   window.delExp=async id=>{if(!confirm('حذف؟'))return;await run(sb.rpc('delete_expense',{p_id:id}));draw()};
   $('#d1').onchange=draw;$('#d2').onchange=draw;draw();
 }
