@@ -83,7 +83,7 @@ const money=n=>Number(n||0).toLocaleString('en-US',{maximumFractionDigits:2});
 const fdt=d=>d?new Date(d).toLocaleString('en-GB',{day:'2-digit',month:'2-digit',year:'2-digit',hour:'2-digit',minute:'2-digit'}):'';
 const fd=d=>d?new Date(d).toLocaleDateString('en-GB'):'';
 const ymd=d=>{const x=new Date(d);return x.getFullYear()+'-'+String(x.getMonth()+1).padStart(2,'0')+'-'+String(x.getDate()).padStart(2,'0')};
-let me=null,page='',timers=[],cart=[];
+let me=null,page='',timers=[],cart=[],EDS=null,EDP=null;
 const isAdmin=()=>me&&me.role==='admin';
 function toast(m,err){const t=$('#toast');t.textContent=m;t.className=err?'err':'';t.style.display='block';clearTimeout(toast.t);toast.t=setTimeout(()=>t.style.display='none',err?5000:2500)}
 function modal(html){const m=$('#modal');m.innerHTML='<div class="box">'+html+'</div>';m.style.display='flex';m.onclick=e=>{if(e.target===m)closeModal()}}
@@ -120,7 +120,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-b';
+const APP_VER='2026-11-27-c';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -150,6 +150,7 @@ function shell(){
   <nav>${Object.entries(PAGES).filter(([k,v])=>!v.h&&(!v.a||isAdmin())).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</nav><main id="main"></main>`;
 }
 function go(p){
+  if(!window._keepEd){if(EDS||EDP){cart=[];BUY=[]}EDS=null;EDP=null}window._keepEd=false;
   page=p;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===({sell:'sales',buy:'purch'}[p]||p)));
   timers=timers.filter(t=>{if(t.pg){clearInterval(t.id);return false}return true});
   $('#main').innerHTML='<p class="muted">...جاري التحميل</p>';
@@ -260,7 +261,7 @@ const METHODS=['كاش','فيزا','تحويل / انستاباي','آجل'];
 async function pSell(){
   await loadFunds();
   const items=await run(sb.from('items').select('id,name,model,serial,qty,price,category').gt('qty',0).order('name').limit(3000));
-  main(`<div class="card"><h2>فاتورة بيع جديدة</h2>
+  main(`<div class="card"><h2>${EDS?'تعديل فاتورة بيع #'+EDS.id:'فاتورة بيع جديدة'}</h2>${EDS?'<p class="muted">عند الحفظ تتلغي الفاتورة القديمة (المخزون والصناديق وحساب العميل يرجعوا) وتتسجل فاتورة بالتعديلات بنفس التاريخ.</p>':''}
   <div class="f2"><div><label>اسم العميل</label><input name="cust" list="cl" autocomplete="off" placeholder="اختر من القائمة أو اكتب اسم جديد"><datalist id="cl"></datalist></div>${fld('الموبايل','ph')}</div>
   <h3 style="margin:14px 0 6px">الأصناف</h3><input id="sq" placeholder="ابحث عن صنف (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="sr" style="margin:8px 0"></div>
   <div class="tw"><table><thead><tr><th>الصنف</th><th style="width:80px">الكمية</th><th style="width:110px">السعر</th><th>الإجمالي</th><th></th></tr></thead><tbody id="cb"></tbody></table></div>
@@ -268,7 +269,7 @@ async function pSell(){
   <h3 style="margin:14px 0 6px;border-top:1px solid #ddd;padding-top:12px">الدفع</h3>
   <div class="f2"><div><label>الدفع إلى</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}</div>
   <div id="xpb"></div><p><button class="btn g s" id="xpa">+ دفعة أخرى (صندوق آخر)</button></p>
-  ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="tt" class="ltr">0</span></h2><button class="btn" id="go">تأكيد البيع</button></div>`);
+  ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="tt" class="ltr">0</span></h2><button class="btn" id="go">${EDS?'حفظ التعديل':'تأكيد البيع'}</button>${EDS?' <button class="btn g" onclick="cart=[];go(\'sales\')">إلغاء التعديل</button>':''}</div>`);
   const xp=[];const drawX=()=>{$('#xpb').innerHTML=xp.map((x,k)=>`<div class="row" style="margin:4px 0"><select onchange="window._xp[${k}].fund=this.value">${FUNDS.map(fd=>`<option value="${fd.old_id}" ${String(fd.old_id)===String(x.fund)?'selected':''}>${esc(fd.name)}</option>`).join('')}</select><input type="number" step="any" placeholder="المبلغ" value="${x.amt||''}" onchange="window._xp[${k}].amt=this.value"><button class="btn g s" onclick="window._xp.splice(${k},1);window._dx()">✕</button></div>`).join('')};
   window._xp=xp;window._dx=drawX;$('#xpa').onclick=()=>{const used=new Set([$('[name=meth]').value,...xp.map(x=>String(x.fund))]);const fd=FUNDS.find(z=>!used.has(String(z.old_id)))||FUNDS[0];xp.push({fund:fd.old_id,amt:''});drawX()};
   const drawC=()=>{$('#cb').innerHTML=cart.map((l,i)=>`<tr><td>${esc(l.name)}</td><td><input type="number" min="1" ${l.max?`max="${l.max}"`:''} value="${l.qty}" onchange="cart[${i}].qty=Math.max(1,parseInt(this.value)||1);${l.max?`cart[${i}].qty=Math.min(cart[${i}].qty,${l.max});`:''}window._dc()"></td><td><input type="number" step="any" value="${l.price}" onchange="cart[${i}].price=num(this.value);window._dc()"></td><td class="ltr">${money(l.qty*l.price)}</td><td><button class="btn g s" onclick="cart.splice(${i},1);window._dc()">✕</button></td></tr><tr><td colspan="5" style="border:0;padding-top:0"><span class="muted">سيريال (اختياري):</span> ${Array.from({length:l.qty},(_,k)=>`<input class="ltr" style="width:170px;margin:2px" placeholder="سيريال ${k+1}" value="${esc((l.serials||[])[k]||'')}" onchange="(cart[${i}].serials=cart[${i}].serials||[])[${k}]=this.value.trim()">`).join('')}</td></tr>`).join('');
@@ -277,6 +278,7 @@ async function pSell(){
   $('#cl').innerHTML=CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('');
   $('[name=cust]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=cust]').value.trim());if(m)$('[name=ph]').value=m.phone||''};
   window._dc=drawC;drawC();
+  if(EDS){const s=EDS;$('[name=cust]').value=s.customer||'';$('[name=ph]').value=s.phone||'';$('[name=note]').value=(s.note||'').replace(/\s*\(معدلة من فاتورة #\d+\)\s*$/,'');const ps=s.sale_pays||[];if(ps.length){$('[name=meth]').value=String(ps[0].fund_id);$('[name=paid]').value=ps[0].amount;ps.slice(1).forEach(q=>xp.push({fund:q.fund_id,amt:q.amount}));drawX()}else{$('[name=meth]').value='credit'}}
   window.addFree=()=>{const n=prompt('اسم البند');if(!n)return;const p=num(prompt('السعر'));cart.push({name:n,qty:1,price:p});drawC()};
   $('#sq').oninput=()=>{const q=$('#sq').value.trim().toLowerCase();if(!q){$('#sr').innerHTML='';return}
     const L=items.filter(i=>[i.name,i.model,i.serial,i.category].join(' ').toLowerCase().includes(q)).slice(0,10);
@@ -290,8 +292,8 @@ async function pSell(){
     if(mm)party=mm.old_id;
     else if(cred||paid!==tot){if(!nm0)return toast('اكتب اسم العميل للبيع الآجل',1);if(!confirm('العميل "'+nm0+'" غير موجود في الحسابات. إضافته كعميل جديد؟'))return;party=await run(sb.rpc('new_customer',{p_name:nm0,p_phone:f.ph}))}
     $('#go').disabled=true;
-    try{const id=await run(sb.rpc('make_sale',{p_party:party,p_customer:f.cust,p_phone:f.ph,p_method:pays?'دفع مجزأ':cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_fund:cred?null:parseInt(f.meth),p_paid:paid,p_note:f.note,p_pays:pays,p_lines:cart.map(l=>({item_id:l.item_id||null,name:l.name,qty:l.qty,price:l.price,serial:(l.serials||[]).slice(0,l.qty).map(x=>(x||'').trim()).filter(Boolean).join(' ، ')}))}));
-      if(party&&f.ph.trim()){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}cart=[];toast('تم البيع - فاتورة #'+id);printSale(id);pSell()}catch(e){$('#go').disabled=false}};
+    try{const id=await run(sb.rpc(EDS?'edit_sale':'make_sale',{...(EDS?{p_old:EDS.id}:{}),p_party:party,p_customer:f.cust,p_phone:f.ph,p_method:pays?'دفع مجزأ':cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_fund:cred?null:parseInt(f.meth),p_paid:paid,p_note:f.note,p_pays:pays,p_lines:cart.map(l=>({item_id:l.item_id||null,name:l.name,qty:l.qty,price:l.price,serial:(l.serials||[]).slice(0,l.qty).map(x=>(x||'').trim()).filter(Boolean).join(' ، ')}))}));
+      if(party&&f.ph.trim()){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}if(EDS){const was=EDS.id;EDS=null;cart=[];toast('تم تعديل الفاتورة #'+was+' - الفاتورة الجديدة #'+id);printSale(id);go('sales')}else{cart=[];toast('تم البيع - فاتورة #'+id);printSale(id);pSell()}}catch(e){$('#go').disabled=false}};
 }
 async function printSale(id){
   const s=await run(sb.from('sales').select('*,sale_lines(*),sale_pays(*)').eq('id',id).single());
@@ -342,20 +344,27 @@ async function purView(id){
   const p=await run(sb.from('purchases').select('*,purchase_lines(*)').eq('id',id).single());
   modal(`<h2>فاتورة شراء #${p.id}</h2><p>${fdt(p.created_at)} | ${esc(p.supplier||'')} | ${esc(p.method||'')} | ${esc(p.user_email||'')}</p><table><tr><th>الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>${p.purchase_lines.map(l=>`<tr><td>${esc(l.name)}</td><td>${l.qty}</td><td>${money(l.cost)}</td><td>${money(l.qty*l.cost)}</td></tr>`).join('')}</table>
   <h3>الإجمالي ${money(p.total)} | المدفوع ${money(p.paid)} | المتبقي ${money(p.total-p.paid)}</h3>${p.note?'<p>'+esc(p.note)+'</p>':''}
-  <p class="row"><button class="btn g" onclick="printPur(${p.id})">طباعة</button>${isAdmin()?`<button class="btn r" onclick="cancelPur(${p.id})">إلغاء الفاتورة (خصم من المخزون)</button>`:''}<button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+  <p class="row"><button class="btn g" onclick="printPur(${p.id})">طباعة</button>${isAdmin()?`<button class="btn" onclick="editPur(${p.id})">تعديل الفاتورة</button><button class="btn r" onclick="cancelPur(${p.id})">إلغاء الفاتورة (خصم من المخزون)</button>`:''}<button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
 }
 async function printPur(id){
   const p=await run(sb.from('purchases').select('*,purchase_lines(*)').eq('id',id).single());
   const w=window.open('','_blank');if(!w)return;
   w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><title>شراء ${id}</title><style>body{font-family:Tahoma;max-width:380px;margin:auto;font-size:13px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px dashed #999;padding:4px;text-align:right}h2,p{text-align:center;margin:4px}</style></head><body><div style="text-align:center"><img src="${LOGO}" style="width:90px;height:90px;border-radius:50%"></div><h2>DEMO Computer Store</h2><p>فاتورة شراء #${p.id} - ${fdt(p.created_at)}</p><p>${esc(p.supplier||'')}</p><table><tr><th>الصنف</th><th>كمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>${p.purchase_lines.map(l=>`<tr><td>${esc(l.name)}</td><td>${l.qty}</td><td>${money(l.cost)}</td><td>${money(l.cost*l.qty)}</td></tr>`).join('')}</table><h3>الإجمالي: ${money(p.total)}</h3><p>المدفوع: ${money(p.paid)} ${p.total>p.paid?' - المتبقي: '+money(p.total-p.paid):''}</p><script>setTimeout(()=>print(),300)<\/script></body></html>`);w.document.close();
 }
+async function editSale(id){const s=await run(sb.from('sales').select('*,sale_lines(*),sale_pays(*)').eq('id',id).single());
+  const ids=s.sale_lines.filter(l=>l.item_id).map(l=>l.item_id);const cur={};if(ids.length){(await run(sb.from('items').select('id,qty').in('id',ids))).forEach(i=>cur[i.id]=i.qty)}
+  cart=s.sale_lines.map(l=>({item_id:l.item_id||undefined,name:l.name,serials:l.serial?l.serial.split(/\s*،\s*/):[],qty:l.qty,price:Number(l.price),max:l.item_id?(cur[l.item_id]||0)+l.qty:undefined}));
+  EDS=s;closeModal();window._keepEd=true;go('sell')}
+async function editPur(id){const p=await run(sb.from('purchases').select('*,purchase_lines(*)').eq('id',id).single());
+  BUY=p.purchase_lines.map(l=>({item_id:l.item_id||null,name:l.name,serial:'',qty:l.qty,cost:Number(l.cost)}));
+  EDP=p;closeModal();window._keepEd=true;go('buy')}
 async function cancelPur(id){if(!confirm('إلغاء فاتورة الشراء وخصم الأصناف من المخزون؟'))return;await run(sb.rpc('cancel_purchase',{p_pur:id}));closeModal();toast('تم الإلغاء');pSales('شراء')}
 const paysTxt=s=>(s.sale_pays&&s.sale_pays.length>1)?'<p style="font-size:12px">'+s.sale_pays.map(p=>esc(p.fund_name||'')+': '+money(p.amount)).join(' + ')+'</p>':'';
 async function saleView(id){
   const s=await run(sb.from('sales').select('*,sale_lines(*),sale_pays(*)').eq('id',id).single());
   modal(`<h2>فاتورة #${s.id}</h2><p>${fdt(s.created_at)} | ${esc(s.customer)} ${esc(s.phone)} | ${esc(s.method)} | ${esc(s.user_email)}</p><table><tr><th>الصنف</th><th>الكمية</th><th>سعر الوحدة</th><th>الإجمالي</th></tr>${s.sale_lines.map(l=>`<tr><td>${esc(l.name)} ${l.serial?'<br><span class="ltr muted">S/N: '+esc(l.serial)+'</span>':''}</td><td>${l.qty}</td><td>${money(l.price)}</td><td>${money(l.qty*l.price)}</td></tr>`).join('')}</table>
   <h3>الإجمالي ${money(s.total)} | المدفوع ${money(s.paid)} | المتبقي ${money(s.total-s.paid)}</h3>${s.sale_pays&&s.sale_pays.length?'<p>الدفعات: '+s.sale_pays.map(p=>esc(p.fund_name||'')+' '+money(p.amount)).join(' + ')+'</p>':''}${s.note?'<p>'+esc(s.note)+'</p>':''}
-  <p class="row">${s.total>s.paid?`<button class="btn" onclick="payForm(${s.id},${s.total-s.paid})">تسجيل دفعة</button>`:''}<button class="btn g" onclick="printSale(${s.id})">طباعة</button>${isAdmin()?`<button class="btn r" onclick="cancelSale(${s.id})">إلغاء الفاتورة (ترجيع للمخزون)</button>`:''}<button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+  <p class="row">${s.total>s.paid?`<button class="btn" onclick="payForm(${s.id},${s.total-s.paid})">تسجيل دفعة</button>`:''}<button class="btn g" onclick="printSale(${s.id})">طباعة</button>${isAdmin()?`<button class="btn" onclick="editSale(${s.id})">تعديل الفاتورة</button><button class="btn r" onclick="cancelSale(${s.id})">إلغاء الفاتورة (ترجيع للمخزون)</button>`:''}<button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
 }
 async function payForm(id,rem){await loadFunds();modal(`<h2>تسجيل دفعة على فاتورة #${id}</h2><div class="f2">${fld('المبلغ','pa',rem,'number','step="any"')}<div><label>الدفع إلى</label><select id="pf2">${fundOpts()}</select></div></div><p class="row"><button class="btn" id="pgo">تسجيل</button><button class="btn g" onclick="closeModal()">إلغاء</button></p>`);
   $('#pgo').onclick=async()=>{await run(sb.rpc('add_payment',{p_sale:id,p_amount:num($('[name=pa]').value),p_fund:parseInt($('#pf2').value)}));closeModal();toast('تم');pSales()}}
@@ -425,18 +434,19 @@ async function pBuy(){
   const [items]=await Promise.all([run(sb.from('items').select('id,name,model,serial,qty,price,category').order('name').limit(3000)),loadFunds()]);
   let CL=[];try{CL=(await run(sb.rpc(isAdmin()?'customer_list':'supplier_list')))||[]}catch(e){}
   BUY=BUY||[];
-  main(`<div class="card"><h2>فاتورة شراء جديدة</h2>
+  main(`<div class="card"><h2>${EDP?'تعديل فاتورة شراء #'+EDP.id:'فاتورة شراء جديدة'}</h2>${EDP?'<p class="muted">عند الحفظ تتلغي الفاتورة القديمة (المخزون والصناديق وحساب المورد يرجعوا) وتتسجل فاتورة بالتعديلات بنفس التاريخ. لو جزء من الكمية اتباع مش هينفع التعديل.</p>':''}
   <div class="f2"><div><label>المورد</label><input name="sup" list="bl" autocomplete="off" placeholder="اختر من الحسابات أو اكتب اسم"><datalist id="bl">${CL.map(c=>`<option value="${esc(c.name)}" label="${c.grp&&c.grp.trim()!=='العملاء'?esc(c.name+' ('+c.grp.trim()+')'):esc(c.name)}">`).join('')}</datalist></div>${fld('الموبايل','ph')}</div>
   <h3 style="margin:14px 0 6px">الأصناف</h3><input id="bq" placeholder="ابحث عن صنف موجود (اسم / موديل / سيريال) ثم اضغط عليه" autocomplete="off"><div id="br" style="margin:8px 0"></div>
   <div class="tw"><table><thead><tr><th>الصنف</th><th style="width:80px">الكمية</th><th style="width:120px">سعر الشراء للوحدة</th><th>الإجمالي</th><th></th></tr></thead><tbody id="bb"></tbody></table></div>
   <p><button class="btn g s" id="bnew">+ صنف جديد (غير مسجل في المخزون)</button></p>
   <h3 style="margin:14px 0 6px;border-top:1px solid #ddd;padding-top:12px">الدفع</h3>
   <div class="f2">${isAdmin()?`<div><label>الدفع من</label><select name="meth">${fundOpts()}<option value="credit">آجل (على الحساب)</option></select></div>`:`<div><label>الدفع من</label><select name="meth"><option value="82">DEMO (الدرج)</option><option value="credit">آجل (على حساب المورد)</option></select></div>`}${fld('المدفوع','paid','','number','step="any" placeholder="الكل"')}</div>
-  ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="bt" class="ltr">0</span></h2><button class="btn" id="bgo">تأكيد الشراء</button></div>`);
+  ${fld('ملاحظة','note')}<h2 style="margin-top:14px">الإجمالي: <span id="bt" class="ltr">0</span></h2><button class="btn" id="bgo">${EDP?'حفظ التعديل':'تأكيد الشراء'}</button>${EDP?' <button class="btn g" onclick="BUY=[];go(\'purch\')">إلغاء التعديل</button>':''}</div>`);
   $('[name=sup]').onchange=()=>{const m=CL.find(c=>c.name.trim()===$('[name=sup]').value.trim());if(m)$('[name=ph]').value=m.phone||''};
   const draw=()=>{$('#bb').innerHTML=BUY.map((l,i)=>`<tr><td>${esc(l.name)} ${l.isnew?'<span class="tag amber">جديد</span>':''} <span class="muted ltr">${esc(l.serial||'')}</span></td><td><input type="number" min="1" value="${l.qty}" onchange="BUY[${i}].qty=Math.max(1,parseInt(this.value)||1);window._bd()"></td><td><input type="number" step="any" value="${l.cost}" onchange="BUY[${i}].cost=num(this.value);window._bd()"></td><td class="ltr">${money(l.qty*l.cost)}</td><td><button class="btn g s" onclick="BUY.splice(${i},1);window._bd()">✕</button></td></tr>`).join('');
     $('#bt').textContent=money(BUY.reduce((s,l)=>s+l.qty*l.cost,0))};
   window._bd=draw;draw();
+  if(EDP){const p=EDP;$('[name=sup]').value=p.supplier||'';const m=CL.find(c=>c.name.trim()===(p.supplier||'').trim());if(m)$('[name=ph]').value=m.phone||'';$('[name=note]').value=(p.note||'').replace(/\s*\(معدلة من فاتورة #\d+\)\s*$/,'');if(Number(p.paid)>0&&p.fund_id){$('[name=meth]').value=String(p.fund_id);$('[name=paid]').value=p.paid}else{$('[name=meth]').value='credit'}}
   $('#bq').oninput=()=>{const q=$('#bq').value.trim().toLowerCase();if(!q){$('#br').innerHTML='';return}
     const L=items.filter(i=>[i.name,i.model,i.serial,i.category].join(' ').toLowerCase().includes(q)).slice(0,10);
     $('#br').innerHTML=L.map(i=>`<button class="btn g s" style="margin:2px" data-id="${i.id}">${esc(i.name)} | بالمخزون ${i.qty}${i.serial?' | '+esc(i.serial):''}</button>`).join('')||'<span class="muted">لا نتائج - استخدم "صنف جديد"</span>';
@@ -449,8 +459,8 @@ async function pBuy(){
     if(mm)party=mm.old_id;
     else if(cred||paid<tot){if(!nm0)return toast('اكتب اسم المورد للشراء الآجل',1);if(!confirm('المورد "'+nm0+'" غير موجود في الحسابات. إضافته كمورد جديد؟'))return;party=await run(sb.rpc('new_supplier',{p_name:nm0}))}
     $('#bgo').disabled=true;
-    try{const id=await run(sb.rpc('make_purchase',{p_party:party,p_supplier:nm0,p_method:cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_paid:paid,p_fund:cred?null:parseInt(f.meth),p_note:f.note,p_lines:BUY.map(l=>({item_id:l.item_id||null,name:l.name,serial:l.serial||'',price:l.price||0,qty:l.qty,cost:l.cost}))}));
-      if(party&&f.ph){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}BUY=[];toast('تم تسجيل فاتورة الشراء #'+id);pBuy()}catch(e){$('#bgo').disabled=false}};
+    try{const id=await run(sb.rpc(EDP?'edit_purchase':'make_purchase',{...(EDP?{p_old:EDP.id}:{}),p_party:party,p_supplier:nm0,p_method:cred?'آجل':((FUNDS.find(x=>String(x.old_id)===f.meth)||{}).name||''),p_paid:paid,p_fund:cred?null:parseInt(f.meth),p_note:f.note,p_lines:BUY.map(l=>({item_id:l.item_id||null,name:l.name,serial:l.serial||'',price:l.price||0,qty:l.qty,cost:l.cost}))}));
+      if(party&&f.ph){try{await sb.rpc('set_party_phone',{p_party:party,p_phone:f.ph})}catch(e){}}if(EDP){const was=EDP.id;EDP=null;BUY=[];toast('تم تعديل فاتورة الشراء #'+was+' - الجديدة #'+id);go('purch')}else{BUY=[];toast('تم تسجيل فاتورة الشراء #'+id);pBuy()}}catch(e){$('#bgo').disabled=false}};
 }
 
 
