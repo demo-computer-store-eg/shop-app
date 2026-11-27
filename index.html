@@ -28,6 +28,15 @@ header small{opacity:.85}
 nav{display:flex;gap:6px;padding:8px 12px;overflow-x:auto;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
 nav button{white-space:nowrap;border:0;background:#eef2f7;padding:9px 14px;border-radius:20px;cursor:pointer;font:inherit;color:var(--tx)}
 nav button.on{background:var(--blue);color:#fff}
+
+#stk{display:none;position:fixed;top:0;left:0;right:0;z-index:30;background:#fff;border-bottom:1px solid var(--line);box-shadow:0 2px 6px #0002}
+#stk button{white-space:nowrap;border:0;background:#eef2f7;padding:6px 10px;border-radius:16px;cursor:pointer;font:inherit;font-size:13px;color:var(--tx)}
+#stk button.on{background:var(--blue);color:#fff}
+#stk .sr{flex:1;display:flex;gap:4px;overflow-x:auto;min-width:0}
+#stk .sm{flex:none;font-size:18px;padding:3px 11px}
+#stk .sp2{display:none}
+@media(max-width:700px){#stk.show{display:flex;align-items:center;gap:6px;padding:5px 6px}#stk.show.open .sp2{display:flex;flex-wrap:wrap;gap:5px;position:absolute;top:100%;left:0;right:0;background:#fff;padding:8px;box-shadow:0 6px 10px #0003;border-bottom:1px solid var(--line)}}
+@media print{#stk{display:none!important}}
 @media(max-width:700px){nav{flex-wrap:wrap;overflow-x:visible;position:static;gap:5px;padding:8px}nav button{padding:8px 11px;font-size:14px}}
 main{padding:14px;max-width:1200px;margin:0 auto}
 .card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:14px;box-shadow:0 1px 3px rgba(0,0,0,.07)}
@@ -121,7 +130,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-d';
+const APP_VER='2026-11-27-e';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -148,11 +157,12 @@ const PAGES={
 };
 function shell(){
   $('#app').innerHTML=`<header><img src="${LOGO}" alt="DEMO" style="width:44px;height:44px;border-radius:50%;background:#000"><h1>DEMO</h1><small>إدارة المحل</small><span class="sp"></span><small>${esc(me.name||me.email)} ${isAdmin()?'(مدير)':''}</small><button class="btn g s" onclick="forceUpdate()" title="تحديث التطبيق">تحديث</button><button class="btn g s" onclick="logout()">خروج</button><small style="opacity:.6;font-size:10px">${APP_VER}</small></header>
-  <nav>${Object.entries(PAGES).filter(([k,v])=>!v.h&&(!v.a||isAdmin())).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</nav><main id="main"></main>`;
+  <nav>${Object.entries(PAGES).filter(([k,v])=>!v.h&&(!v.a||isAdmin())).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</nav><div id="stk"><div class="sr">${Object.entries(PAGES).filter(([k,v])=>!v.h&&(!v.a||isAdmin())).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</div><button class="sm" onclick="document.getElementById('stk').classList.toggle('open')" aria-label="كل الأقسام">☰</button><div class="sp2">${Object.entries(PAGES).filter(([k,v])=>!v.h&&(!v.a||isAdmin())).map(([k,v])=>`<button data-p="${k}" onclick="go('${k}')">${v.t}</button>`).join('')}</div></div><main id="main"></main>`;
+  if(!window._stkL){window._stkL=1;window.addEventListener('scroll',()=>{const k=document.getElementById('stk');if(!k)return;const sh=window.scrollY>110;k.classList.toggle('show',sh);if(!sh)k.classList.remove('open')},{passive:true})}
 }
 function go(p){
   if(!window._keepEd){if(EDS||EDP){cart=[];BUY=[]}EDS=null;EDP=null}window._keepEd=false;
-  page=p;document.querySelectorAll('nav button').forEach(b=>b.classList.toggle('on',b.dataset.p===({sell:'sales',buy:'purch'}[p]||p)));
+  page=p;document.querySelectorAll('nav button,#stk button[data-p]').forEach(b=>b.classList.toggle('on',b.dataset.p===({sell:'sales',buy:'purch'}[p]||p)));{const k=document.getElementById('stk');if(k)k.classList.remove('open');const o=document.querySelector('#stk .sr .on');if(o){const r=o.parentElement;r.scrollLeft=(getComputedStyle(r).direction==='rtl')?(o.offsetLeft+o.clientWidth/2-r.clientWidth/2-r.scrollWidth+r.clientWidth):(o.offsetLeft-r.clientWidth/2+o.clientWidth/2)}}
   timers=timers.filter(t=>{if(t.pg){clearInterval(t.id);return false}return true});
   $('#main').innerHTML='<p class="muted">...جاري التحميل</p>';
   sb.rpc('ping',{p_page:PAGES[p].t});
