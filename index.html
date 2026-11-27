@@ -137,7 +137,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-n';
+const APP_VER='2026-11-28-a';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -546,14 +546,15 @@ async function returnOld(id){
   };
 }
 async function editOld(id){
-  if(!PARTIES)await loadParties();
+  if(!PARTIES)await loadParties();await loadFunds();
   const b=await run(sb.from('old_bills').select('*,old_bill_lines(*)').eq('old_id',id).single());
   EL=b.old_bill_lines.map(l=>({id:String(l.id),item_name:l.item_name,qty:l.qty,price:l.price,cost:l.cost,ret_qty:Number(l.ret_qty)||0}));
   const drawL=()=>{$('#elns').innerHTML=EL.map((l,i)=>`<tr><td><input value="${esc(l.item_name)}" onchange="EL[${i}].item_name=this.value"></td><td><input type="number" step="any" min="${l.ret_qty}" value="${l.qty}" style="width:70px" onchange="EL[${i}].qty=num(this.value)"></td><td><input type="number" step="any" value="${l.price}" style="width:90px" onchange="EL[${i}].price=num(this.value)"></td><td><input type="number" step="any" value="${l.cost}" style="width:90px" onchange="EL[${i}].cost=num(this.value)"></td><td>${l.ret_qty>0?'<span class="tag red">مرتجع '+l.ret_qty+'</span>':`<button type="button" class="btn g s" onclick="EL.splice(${i},1);window._edl()">✕</button>`}</td></tr>`).join('')};
   window._edl=drawL;
-  modal(`<h2>تعديل فاتورة ${esc(b.kind)} #${esc(b.bill_no)} (قديمة)</h2><p class="muted">تعديل الفاتورة القديمة يصحح السجل فقط - لا يحرك المخزون الحالي ولا أرصدة الصناديق. الربح يعاد حسابه تلقائيا. لإرجاع بضاعة للمخزون استخدم زر "مرتجع".</p>
+  modal(`<h2>تعديل فاتورة ${esc(b.kind)} #${esc(b.bill_no)} (قديمة)</h2><p class="muted">حفظ التعديل يظبط كل حاجة بالفرق زي تعديل فاتورة جديدة: المخزون، الصندوق المختار (لو المدفوع اتغير)، وحساب العميل/المورد. الربح يعاد حسابه تلقائيا. المرتجعات السابقة محفوظة.</p>
   <div class="row"><div><label>الحساب</label><select id="eparty">${PARTIES.filter(p=>p.old_id>0).map(p=>`<option value="${p.old_id}" ${p.old_id===b.party_id?'selected':''}>${esc(p.name)}${p.grp?' ('+esc(p.grp.trim())+')':''}</option>`).join('')}</select></div>${fld('التاريخ','eday',b.day,'date')}${fld('الوقت','etm',b.tm||'')}</div>
   <div class="row">${fld('طريقة الدفع','emeth',b.method||'')}${fld('خصم','edisc',b.discount||0,'number','step="any"')}${fld('مدفوع','epaid',b.paid||0,'number','step="any"')}</div>
+  <div class="row"><div><label>صندوق تسوية فرق المدفوع (لو المدفوع اتغير)</label><select id="efund">${fundOpts()}</select></div></div>
   ${fld('ملاحظات','erem',b.remarks||'')}
   <div class="tw"><table><tr><th>الصنف</th><th>الكمية</th><th>السعر</th><th>التكلفة</th><th></th></tr><tbody id="elns"></tbody></table></div>
   <p><button type="button" class="btn g s" onclick="EL.push({id:null,item_name:'',qty:1,price:0,cost:0,ret_qty:0});window._edl()">+ إضافة سطر</button></p>
@@ -563,8 +564,8 @@ async function editOld(id){
     if(!EL.length)return toast('الفاتورة فارغة',1);
     if(!confirm('حفظ تعديل فاتورة #'+b.bill_no+'؟'))return;
     $('#ego').disabled=true;
-    try{const t=await run(sb.rpc('edit_old_bill',{p_bill:id,p_party:parseInt($('#eparty').value),p_day:$('[name=eday]').value||null,p_tm:$('[name=etm]').value.trim()||null,p_method:$('[name=emeth]').value.trim()||null,p_discount:num($('[name=edisc]').value),p_paid:num($('[name=epaid]').value),p_remarks:$('[name=erem]').value,p_lines:EL.map(l=>({id:l.id,item_name:l.item_name,qty:String(l.qty),price:String(l.price),cost:String(l.cost)}))}));
-      closeModal();toast('تم التعديل - الإجمالي '+money(t));pSales(b.kind)}catch(e){$('#ego').disabled=false}
+    try{const t=await run(sb.rpc('edit_old_bill',{p_bill:id,p_party:parseInt($('#eparty').value),p_day:$('[name=eday]').value||null,p_tm:$('[name=etm]').value.trim()||null,p_method:$('[name=emeth]').value.trim()||null,p_discount:num($('[name=edisc]').value),p_paid:num($('[name=epaid]').value),p_remarks:$('[name=erem]').value,p_fund:parseInt($('#efund').value),p_lines:EL.map(l=>({id:l.id,item_name:l.item_name,qty:String(l.qty),price:String(l.price),cost:String(l.cost)}))}));
+      closeModal();toast('تم التعديل - الإجمالي '+money(t.amount||t)+(t.warnings&&t.warnings.length?' ⚠ '+t.warnings.join(' | '):''));pSales(b.kind)}catch(e){$('#ego').disabled=false}
   };
 }
 
