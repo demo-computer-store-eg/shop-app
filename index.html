@@ -137,7 +137,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-28-a';
+const APP_VER='2026-11-28-b';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -156,6 +156,7 @@ const PAGES={
  exp:{t:'المصروفات',f:()=>pExp()},
  acc:{t:'الحسابات',a:1,f:()=>pAcc()},
  bal:{t:'الأرصدة (له / عليه)',a:1,f:()=>pBal()},
+ qabz:{t:'قبض وصرف',a:1,f:()=>pQabz()},
  act:{t:'النشاط',a:1,f:()=>pAct()},
  staff:{t:'الموظفين',a:1,f:()=>pStaff()},
  bk:{t:'نسخة احتياطية',a:1,f:()=>pBk()},
@@ -471,6 +472,46 @@ async function pBal(){
   $('#dfs').onchange=async()=>{await run(sb.rpc('set_default_fund',{p_fund:parseInt($('#dfs').value)}));toast('تم');await loadFunds()};
   $('#nfb').onclick=async()=>{const n=prompt('اسم الصندوق الجديد');if(!n)return;await run(sb.rpc('new_fund',{p_name:n}));toast('تمت الإضافة');pBal()};
   ['bg','bq','bz'].forEach(i=>$('#'+i).oninput=draw);draw();
+}
+async function pQabz(){
+  await loadParties();await loadFunds();
+  window._qk=null;window._qp=null;
+  main(`<div class="card"><h2>قبض وصرف</h2><p class="muted">اضغط قبض أو صرف، وبعدين اختار الحساب على طول - من غير ما تدور عليه في الأرصدة الأول.</p>
+  <div class="row" style="gap:8px"><button class="btn" style="flex:1;background:var(--green);font-size:18px;padding:14px" onclick="qabzKind('pay_in')">قبض<small style="display:block;font-size:12px;font-weight:normal">استلام مبلغ من حساب (له)</small></button><button class="btn r" style="flex:1;font-size:18px;padding:14px" onclick="qabzKind('pay_out')">صرف<small style="display:block;font-size:12px;font-weight:normal">دفع مبلغ لحساب (عليه)</small></button></div>
+  <div id="qbf"></div></div>`);
+}
+function qabzKind(k){
+  window._qk=k;window._qp=null;
+  const t=k==='pay_in'?'قبض من حساب':'صرف لحساب';
+  $('#qbf').innerHTML=`<hr style="border:0;border-top:1px solid var(--line);margin:12px 0"><b>${t}</b>
+  <div style="margin-top:8px"><label>الحساب (ابحث بالاسم أو الموبايل واضغط عليه)</label><input id="qq" autocomplete="off" placeholder="اكتب اسم الحساب أو رقم الموبايل"></div>
+  <div id="ql"></div><div id="qc"></div>
+  <div class="row" style="margin-top:8px"><div><label>المبلغ</label><input id="qa" type="number" step="any" inputmode="decimal"></div><div><label>الصندوق</label><select id="qf">${fundOpts()}</select></div><div><label>ملاحظة</label><input id="qn"></div></div>
+  <button class="btn ${k==='pay_in'?'':'r'}" style="margin-top:10px;${k==='pay_in'?'background:var(--green)':''}" onclick="qabzSave()">تسجيل ${k==='pay_in'?'القبض':'الصرف'}</button>`;
+  $('#qq').oninput=()=>qabzList($('#qq').value);
+  qabzList('');
+}
+function qabzList(q){
+  q=(q||'').trim().toLowerCase();const qd=q.replace(/\D/g,'');
+  const L=PARTIES.filter(p=>(p.old_id>0)&&(p.grp||'').trim()!=='الصناديق'&&(!q||p.name.toLowerCase().includes(q)||(qd&&(p.phone||'').replace(/\D/g,'').includes(qd))));
+  L.sort((a,b)=>Math.abs(b.balance)-Math.abs(a.balance));
+  $('#ql').innerHTML=`<div style="max-height:220px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin-top:6px">${L.slice(0,30).map(p=>`<div class="click" style="padding:8px;border-bottom:1px solid var(--line)" onclick="qabzPick(${p.old_id})">${esc(p.name)} <span class="muted">${esc(p.grp||'')}</span> ${p.phone?'<span class="ltr muted">'+esc(p.phone)+'</span>':''} <span style="float:left;${p.balance>0?'color:var(--red)':p.balance<0?'color:var(--green)':''}">${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</span></div>`).join('')||'<p class="muted" style="padding:8px">مفيش حساب بالاسم ده</p>'}</div>`;
+}
+function qabzPick(id){
+  window._qp=id;const p=PARTIES.find(x=>x.old_id===id);
+  $('#qq').value=p.name;$('#ql').innerHTML='';
+  $('#qc').innerHTML=`<p style="margin-top:6px">الحساب المختار: <b>${esc(p.name)}</b> (${esc(p.grp||'')}) - الرصيد الحالي: <b>${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</b> <button class="btn g s" onclick="qabzKind(window._qk)">تغيير</button></p>`;
+  $('#qa').focus();
+}
+async function qabzSave(){
+  const k=window._qk,id=window._qp,a=num($('#qa').value),n=$('#qn').value;
+  if(!id)return toast('اختار الحساب الأول',1);if(!(a>0))return toast('اكتب المبلغ',1);
+  const p=PARTIES.find(x=>x.old_id===id);
+  if(!confirm((k==='pay_in'?'قبض ':'صرف ')+money(a)+' '+(k==='pay_in'?'من':'ل')+' حساب '+p.name+' - الصندوق: '+$('#qf').selectedOptions[0].text+'؟'))return;
+  await run(sb.rpc('add_entry',{p_party:id,p_kind:k,p_amount:a,p_note:n,p_fund:parseInt($('#qf').value)}));
+  await loadParties();const p2=PARTIES.find(x=>x.old_id===id);
+  toast('تم التسجيل - رصيد '+p2.name+': '+(p2.balance>0?'عليه '+money(p2.balance):p2.balance<0?'له '+money(-p2.balance):'صفر'));
+  qabzKind(k);
 }
 async function delTr(id){if(!confirm('حذف التحويل وإرجاع الرصيدين؟'))return;await run(sb.rpc('delete_transfer',{p_id:id}));toast('تم');go(page==='home'?'home':'bal')}
 async function stmt(id,off=0,append=false){
