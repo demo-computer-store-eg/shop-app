@@ -137,7 +137,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-28-b';
+const APP_VER='2026-11-28-c';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -156,7 +156,6 @@ const PAGES={
  exp:{t:'المصروفات',f:()=>pExp()},
  acc:{t:'الحسابات',a:1,f:()=>pAcc()},
  bal:{t:'الأرصدة (له / عليه)',a:1,f:()=>pBal()},
- qabz:{t:'قبض وصرف',a:1,f:()=>pQabz()},
  act:{t:'النشاط',a:1,f:()=>pAct()},
  staff:{t:'الموظفين',a:1,f:()=>pStaff()},
  bk:{t:'نسخة احتياطية',a:1,f:()=>pBk()},
@@ -462,7 +461,9 @@ function trInit(after){const fl=FUNDS.filter(x=>x.old_id!==FUNDS[0].old_id);$('#
 async function pBal(){
   await loadParties();await loadFunds();
   const grps=[...new Set(PARTIES.map(p=>p.grp||'أخرى'))].sort();
-  main(`<div class="card"><h2>الأرصدة من البرنامج القديم</h2><div class="row" style="margin-bottom:8px"><div><label>الصندوق الافتراضي (بيع / قبض / دفع)</label><select id="dfs">${fundOpts()}</select></div><button class="btn g" id="nfb" style="margin-top:20px">+ صندوق جديد (تحويل بنكي / انستاباي / محفظة...)</button></div><p class="muted">عليه = مدين للمحل (المحل له عنده) | له = دائن (المحل عليه له). الأرصدة كما في آخر يوم في البرنامج القديم (26/11/2026).</p>
+  main(`<div class="card"><h2>قبض وصرف</h2><p class="muted">اضغط قبض أو صرف، وبعدين اختار الحساب على طول - من غير ما تدور عليه في القائمة الأول.</p>
+  <div class="row" style="gap:8px"><button class="btn" style="flex:1;background:var(--green);font-size:18px;padding:14px" onclick="qabzKind('pay_in')">قبض<small style="display:block;font-size:12px;font-weight:normal">استلام مبلغ من حساب (له)</small></button><button class="btn r" style="flex:1;font-size:18px;padding:14px" onclick="qabzKind('pay_out')">صرف<small style="display:block;font-size:12px;font-weight:normal">دفع مبلغ لحساب (عليه)</small></button></div>
+  <div id="qbf"></div><hr style="border:0;border-top:1px solid var(--line);margin:14px 0"><h2>الأرصدة من البرنامج القديم</h2><div class="row" style="margin-bottom:8px"><div><label>الصندوق الافتراضي (بيع / قبض / دفع)</label><select id="dfs">${fundOpts()}</select></div><button class="btn g" id="nfb" style="margin-top:20px">+ صندوق جديد (تحويل بنكي / انستاباي / محفظة...)</button></div><p class="muted">عليه = مدين للمحل (المحل له عنده) | له = دائن (المحل عليه له). الأرصدة كما في آخر يوم في البرنامج القديم (26/11/2026).</p>
   <div class="row"><div><label>نوع الحساب</label><select id="bg"><option value="">الكل</option>${grps.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div><label>بحث بالاسم أو الموبايل</label><input id="bq"></div><label class="fit" style="margin-top:20px"><input type="checkbox" id="bz" checked style="width:auto"> إخفاء الأرصدة الصفرية</label></div><div id="bs"></div><div class="tw" id="bl"></div></div>`);
   const draw=()=>{const g=$('#bg').value,q=$('#bq').value.trim().toLowerCase(),hz=$('#bz').checked;
     const L=PARTIES.filter(p=>(!g||(p.grp||'أخرى')===g)&&(!q||p.name.toLowerCase().includes(q)||(p.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')||'§')||(p.phone||'').includes(q))&&(!hz||Math.abs(p.balance)>0.004)&&(p.old_id>0||p.old_id===-3));
@@ -473,20 +474,14 @@ async function pBal(){
   $('#nfb').onclick=async()=>{const n=prompt('اسم الصندوق الجديد');if(!n)return;await run(sb.rpc('new_fund',{p_name:n}));toast('تمت الإضافة');pBal()};
   ['bg','bq','bz'].forEach(i=>$('#'+i).oninput=draw);draw();
 }
-async function pQabz(){
-  await loadParties();await loadFunds();
-  window._qk=null;window._qp=null;
-  main(`<div class="card"><h2>قبض وصرف</h2><p class="muted">اضغط قبض أو صرف، وبعدين اختار الحساب على طول - من غير ما تدور عليه في الأرصدة الأول.</p>
-  <div class="row" style="gap:8px"><button class="btn" style="flex:1;background:var(--green);font-size:18px;padding:14px" onclick="qabzKind('pay_in')">قبض<small style="display:block;font-size:12px;font-weight:normal">استلام مبلغ من حساب (له)</small></button><button class="btn r" style="flex:1;font-size:18px;padding:14px" onclick="qabzKind('pay_out')">صرف<small style="display:block;font-size:12px;font-weight:normal">دفع مبلغ لحساب (عليه)</small></button></div>
-  <div id="qbf"></div></div>`);
-}
 function qabzKind(k){
   window._qk=k;window._qp=null;
   const t=k==='pay_in'?'قبض من حساب':'صرف لحساب';
   $('#qbf').innerHTML=`<hr style="border:0;border-top:1px solid var(--line);margin:12px 0"><b>${t}</b>
   <div style="margin-top:8px"><label>الحساب (ابحث بالاسم أو الموبايل واضغط عليه)</label><input id="qq" autocomplete="off" placeholder="اكتب اسم الحساب أو رقم الموبايل"></div>
   <div id="ql"></div><div id="qc"></div>
-  <div class="row" style="margin-top:8px"><div><label>المبلغ</label><input id="qa" type="number" step="any" inputmode="decimal"></div><div><label>الصندوق</label><select id="qf">${fundOpts()}</select></div><div><label>ملاحظة</label><input id="qn"></div></div>
+  <div class="row" style="margin-top:8px"><div><label>المبلغ</label><input id="qa" type="number" step="any" inputmode="decimal"></div><div><label>ملاحظة</label><input id="qn"></div></div>
+  <div style="margin-top:8px"><label>الصندوق</label><select id="qf">${FUNDS.map(f=>`<option value="${f.old_id}" ${f.old_id===-3?'selected':''}>${esc(f.name)}</option>`).join('')}</select></div>
   <button class="btn ${k==='pay_in'?'':'r'}" style="margin-top:10px;${k==='pay_in'?'background:var(--green)':''}" onclick="qabzSave()">تسجيل ${k==='pay_in'?'القبض':'الصرف'}</button>`;
   $('#qq').oninput=()=>qabzList($('#qq').value);
   qabzList('');
