@@ -136,7 +136,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-k';
+const APP_VER='2026-11-27-l';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -337,14 +337,14 @@ async function docToPng(){
     else if(tg==='TABLE'){
       for(const tr of el.querySelectorAll('tr')){
         const cells=[...tr.children].map(c=>c.innerText.trim());const n=cells.length;
-        const fr=n===4?[.4,.12,.24,.24]:Array(n).fill(1/n);const isH=tr.querySelector('th');
+        const fr=n===4?[.4,.12,.24,.24]:n===5?[.15,.37,.16,.16,.16]:Array(n).fill(1/n);const isH=tr.querySelector('th');
         const font=(isH?'bold ':'')+'15px '+F;const inner=W-2*pad;
         const wr=cells.map((c,i)=>wrap(c,font,inner*fr[i]-8));const m=Math.max(...wr.map(x=>x.length));const lh=22;
         ops.push({k:'r',wr,fr,font,y,lh,m,isH});y+=m*lh+10;
       }
     }else txt(el.innerText,15,0,'center');
   }
-  y+=pad;cv.width=W*S;cv.height=y*S;ctx.scale(S,S);ctx.direction='rtl';ctx.fillStyle='#fff';ctx.fillRect(0,0,W,y);ctx.fillStyle='#000';ctx.textBaseline='top';
+  y+=pad;const S2=Math.max(.5,Math.min(S,Math.sqrt(14e6/(W*y))));cv.width=Math.round(W*S2);cv.height=Math.round(y*S2);ctx.scale(S2,S2);ctx.direction='rtl';ctx.fillStyle='#fff';ctx.fillRect(0,0,W,y);ctx.fillStyle='#000';ctx.textBaseline='top';
   for(const o of ops){
     if(o.k==='i'){const d=90;try{ctx.drawImage(o.el,(W-d)/2,o.y,d,d)}catch(e){}}
     else if(o.k==='h'){ctx.strokeStyle='#888';ctx.beginPath();ctx.moveTo(pad,o.y);ctx.lineTo(W-pad,o.y);ctx.stroke()}
@@ -484,7 +484,19 @@ async function stmt(id,off=0,append=false){
     stmt.run-=net}
   stmt.html+=h;
   modal(`<h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')} | موبايل: <b class="ltr">${esc(p.phone||'غير مسجل')}</b>${['العملاء','الموردون'].includes((p.grp||'').trim())&&isAdmin()?` <button class="btn g s" onclick="editPhone(${id})">تعديل الموبايل</button>`:''} | الرصيد الحالي: <b>${p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر'}</b></p><div class="tw" style="max-height:60vh;overflow:auto"><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${stmt.html}</table></div>
-  ${me&&me.active!==false?`<div class="card" style="margin:8px 0"><b>تسجيل حركة على الحساب (بتتجمع كلها في نفس الكشف وتتصافى مع الرصيد)</b><div class="row"><select id="ek" class="fit"><option value="pay_in">قبضت منه / اقترضت منه (له)</option><option value="pay_out">دفعت له / أقرضته (عليه)</option><option value="buy_from">اشتريت منه بضاعة (له)</option><option value="sell_to">بعت له بضاعة (عليه)</option></select><input id="ea" type="number" step="any" placeholder="المبلغ"><select id="ef2" class="fit" title="الصندوق (للقبض والدفع)">${fundOpts()}</select><input id="en" placeholder="ملاحظة"><button class="btn" onclick="addEntry(${id})">تسجيل</button></div></div>`:''}<p class="row">${rows.length===N?`<button class="btn g" onclick="stmt(${id},${off+N},true)">عرض الأقدم</button>`:'<span class="muted">انتهى الكشف</span>'}<button class="btn g" onclick="window.print()">طباعة</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+  ${me&&me.active!==false?`<div class="card" style="margin:8px 0"><b>تسجيل حركة على الحساب (بتتجمع كلها في نفس الكشف وتتصافى مع الرصيد)</b><div class="row"><select id="ek" class="fit"><option value="pay_in">قبضت منه / اقترضت منه (له)</option><option value="pay_out">دفعت له / أقرضته (عليه)</option><option value="buy_from">اشتريت منه بضاعة (له)</option><option value="sell_to">بعت له بضاعة (عليه)</option></select><input id="ea" type="number" step="any" placeholder="المبلغ"><select id="ef2" class="fit" title="الصندوق (للقبض والدفع)">${fundOpts()}</select><input id="en" placeholder="ملاحظة"><button class="btn" onclick="addEntry(${id})">تسجيل</button></div></div>`:''}<p class="row">${rows.length===N?`<button class="btn g" onclick="stmt(${id},${off+N},true)">عرض الأقدم</button>`:'<span class="muted">انتهى الكشف</span>'}<button class="btn g" onclick="printStmt(${id})">طباعة</button><button class="btn g" onclick="closeModal()">إغلاق</button></p>`);
+}
+async function printStmt(id){
+  if(!PARTIES)await loadParties();
+  const p=PARTIES.find(x=>x.old_id===id);const N=1000;let all=[],off=0;
+  for(;;){const r=await run(sb.from('ledger').select('*').eq('party_id',id).order('day',{ascending:false}).order('id',{ascending:false}).range(off,off+N-1));all=all.concat(r);if(r.length<N||all.length>=5000)break;off+=N}
+  let run_=Number(p.balance),h='';
+  for(const r of all){const net=Number(r.debit)-Number(r.credit);
+    const nm=r.counter_id!=null?(PARTIES.find(x=>x.old_id===r.counter_id)||{}).name||'':'';
+    h+=`<tr><td>${esc(r.day)}</td><td>${esc((r.remarks||'')+(nm?' ← '+nm:''))}</td><td>${r.debit>0?money(r.debit):''}</td><td>${r.credit>0?money(r.credit):''}</td><td>${money(run_)}</td></tr>`;run_-=net}
+  const bal=p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر';
+  const w=docWin();
+  w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><style>body{font-family:Tahoma;max-width:760px;margin:auto;font-size:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px dashed #999;padding:4px;text-align:right}h2,p{text-align:center;margin:4px}</style></head><body><div style="text-align:center"><img src="${LOGO}" style="width:90px;height:90px;border-radius:50%"></div><h2>DEMO Computer Store</h2><p>٧ ميدان سفنكس - كمبيوتر مول - الدور الأول F3<br>01100605106</p><hr><h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')}${p.phone?' | '+esc(p.phone):''}</p><p>الرصيد الحالي: <b>${bal}</b> - ${fdt(new Date().toISOString())}</p><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${h}</table><p>عدد الحركات: ${all.length}</p></body></html>`);w.document.close();
 }
 async function editPhone(id){const p=PARTIES.find(x=>x.old_id===id);const v=prompt('موبايل '+p.name+' (سيبه فاضي لمسحه)',p.phone||'');if(v===null)return;await run(sb.rpc('set_party_phone',{p_party:id,p_phone:v}));toast('تم');await loadParties();stmt(id)}
 async function addEntry(id){const k=$('#ek').value,a=num($('#ea').value),n=$('#en').value;if(!(a>0))return toast('اكتب المبلغ',1);
