@@ -136,7 +136,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-l';
+const APP_VER='2026-11-27-m';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -319,7 +319,7 @@ async function pSell(){
 function docWin(){let buf='';return{document:{write:t=>{buf+=t},close:()=>showDoc(buf)}}}
 function closeDoc(){const o=document.getElementById('docov');if(o)o.remove();document.body.classList.remove('hasdoc')}
 const isStandalone=()=>!!(window.navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches));
-function printDoc(){if(isStandalone())return shareDoc();window.print()}
+function printDoc(){if(isStandalone()){const dc=document.querySelector('#docov .dc');if(dc&&dc.querySelector('[data-long]')){if(!document.getElementById('lnote'))dc.insertAdjacentHTML('afterbegin','<p id="lnote" style="background:#fff3cd;padding:10px;text-align:center;font-size:14px">الكشف طويل (أكتر من 150 حركة) ومش هيتصور كويس كصورة. افتح الرابط من Safari مش من الأيقونة، ادخل كشف الحساب واضغط "طباعة" عشان يطلع على صفحات كاملة.</p>');toast('كشف طويل: اطبعه من Safari',1);return}return shareDoc()}window.print()}
 async function docToPng(){
   const root=document.querySelector('#docov .dc');if(!root)throw new Error('no doc');
   const W=760,pad=26,S=2,F='Tahoma, Arial, sans-serif';
@@ -488,15 +488,15 @@ async function stmt(id,off=0,append=false){
 }
 async function printStmt(id){
   if(!PARTIES)await loadParties();
-  const p=PARTIES.find(x=>x.old_id===id);const N=1000;let all=[],off=0;
-  for(;;){const r=await run(sb.from('ledger').select('*').eq('party_id',id).order('day',{ascending:false}).order('id',{ascending:false}).range(off,off+N-1));all=all.concat(r);if(r.length<N||all.length>=5000)break;off+=N}
+  const p=PARTIES.find(x=>x.old_id===id);const N=1000,CAP=20000;let all=[],off=0,trunc=false;
+  for(;;){const r=await run(sb.from('ledger').select('*').eq('party_id',id).order('day',{ascending:false}).order('id',{ascending:false}).range(off,off+N-1));all=all.concat(r);if(r.length<N)break;if(all.length>=CAP){trunc=true;break}off+=N}
   let run_=Number(p.balance),h='';
   for(const r of all){const net=Number(r.debit)-Number(r.credit);
     const nm=r.counter_id!=null?(PARTIES.find(x=>x.old_id===r.counter_id)||{}).name||'':'';
     h+=`<tr><td>${esc(r.day)}</td><td>${esc((r.remarks||'')+(nm?' ← '+nm:''))}</td><td>${r.debit>0?money(r.debit):''}</td><td>${r.credit>0?money(r.credit):''}</td><td>${money(run_)}</td></tr>`;run_-=net}
   const bal=p.balance>0?'عليه '+money(p.balance):p.balance<0?'له '+money(-p.balance):'صفر';
   const w=docWin();
-  w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><style>body{font-family:Tahoma;max-width:760px;margin:auto;font-size:12px}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px dashed #999;padding:4px;text-align:right}h2,p{text-align:center;margin:4px}</style></head><body><div style="text-align:center"><img src="${LOGO}" style="width:90px;height:90px;border-radius:50%"></div><h2>DEMO Computer Store</h2><p>٧ ميدان سفنكس - كمبيوتر مول - الدور الأول F3<br>01100605106</p><hr><h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')}${p.phone?' | '+esc(p.phone):''}</p><p>الرصيد الحالي: <b>${bal}</b> - ${fdt(new Date().toISOString())}</p><table><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr>${h}</table><p>عدد الحركات: ${all.length}</p></body></html>`);w.document.close();
+  w.document.write(`<html dir="rtl"><head><meta charset="utf-8"><style>body{font-family:Tahoma;max-width:760px;margin:auto;font-size:12px}table{width:100%;border-collapse:collapse}thead{display:table-header-group}tr{page-break-inside:avoid}td,th{border-bottom:1px dashed #999;padding:4px;text-align:right}h2,p{text-align:center;margin:4px}</style></head><body><div style="text-align:center"><img src="${LOGO}" style="width:90px;height:90px;border-radius:50%"></div><h2>DEMO Computer Store</h2><p>٧ ميدان سفنكس - كمبيوتر مول - الدور الأول F3<br>01100605106</p><hr><h2>كشف حساب: ${esc(p.name)}</h2><p>${esc(p.grp||'')}${p.phone?' | '+esc(p.phone):''}</p><p>الرصيد الحالي: <b>${bal}</b> - ${fdt(new Date().toISOString())}</p><table><thead><tr><th>التاريخ</th><th>البيان</th><th>مدين (عليه)</th><th>دائن (له)</th><th>الرصيد</th></tr></thead>${h}</table>${trunc?'<p style="color:#b00"><b>تنبيه: الكشف مقطوع - معروض آخر '+all.length+' حركة فقط (من '+esc(all[all.length-1].day)+' لحد النهاردة). الحركات الأقدم غير معروضة.</b></p>':''}<p>عدد الحركات: ${all.length}</p>${all.length>150?'<i data-long="1"></i>':''}</body></html>`);w.document.close();
 }
 async function editPhone(id){const p=PARTIES.find(x=>x.old_id===id);const v=prompt('موبايل '+p.name+' (سيبه فاضي لمسحه)',p.phone||'');if(v===null)return;await run(sb.rpc('set_party_phone',{p_party:id,p_phone:v}));toast('تم');await loadParties();stmt(id)}
 async function addEntry(id){const k=$('#ek').value,a=num($('#ea').value),n=$('#en').value;if(!(a>0))return toast('اكتب المبلغ',1);
