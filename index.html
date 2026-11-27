@@ -131,7 +131,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-f';
+const APP_VER='2026-11-27-g';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -184,6 +184,8 @@ async function actBox(n){
 }
 async function pHome(){
   const draw=async()=>{
+    {const a=document.getElementById('tfa');if(a&&(a.value||(document.activeElement&&document.activeElement.closest&&document.activeElement.closest('#trbox'))))return}
+    if(isAdmin()&&!FUNDS.length)await loadFunds();
     const t0=new Date();t0.setHours(0,0,0,0);const iso=t0.toISOString();
     const [fnd,sales,exps,reps,items,oldS,oldR]=await Promise.all([
       run(sb.from('parties').select('old_id,name,balance').eq('grp','الصناديق').order('old_id')),
@@ -200,9 +202,11 @@ async function pHome(){
     main(`<div class="grid"><div class="stat"><span>مبيعات اليوم (${sales.length+oldS.length} فاتورة)</span><b>${money(tot)}</b></div><div class="stat"><span>ربح اليوم</span><b>${money(tot-cost+oldR.reduce((s,x)=>s+Number(x.credit)-Number(x.debit),0))}</b></div><div class="stat"><span>مصروفات اليوم</span><b>${money(ex)}</b></div><div class="stat"><span>أجهزة في الصيانة</span><b>${reps.length}</b></div></div>
     <div class="card"><h2>إجمالي الصناديق</h2><div class="grid"><div class="stat"><span>مجموع كل الصناديق</span><b>${money(fnd.reduce((t,f)=>t+Number(f.balance||0),0))}</b></div></div></div>
     <div class="card"><h2>أرصدة الصناديق</h2><div class="grid">${fnd.map(f=>`<div class="stat"><span>${esc(f.name)}</span><b>${money(f.balance)}</b></div>`).join('')}</div></div>
+    ${isAdmin()?'<div id="trbox">'+trCard()+'</div>':''}
     ${await presenceBox()}
     <div class="card"><h2>أصناف قاربت على النفاد</h2>${low.length?low.map(i=>`<span class="tag red" style="margin:2px">${esc(i.name)}: ${i.qty}</span>`).join(' '):'<span class="muted">لا يوجد</span>'}</div>
     ${await actBox(15)}`);
+    if(isAdmin())trInit(()=>go('home'));
   };
   await draw();autoRefresh(draw,20000);
 }
@@ -387,10 +391,17 @@ async function cancelSale(id){if(!confirm('إلغاء الفاتورة وإرج�
 let PARTIES=null;
 async function loadParties(){PARTIES=await run(sb.from('parties').select('*').order('name').limit(1000));return PARTIES}
 const grpOrder=['العملاء','الموردون','المسحوبات ','الصناديق','البنوك','راس المال','اخرى'];
+const trCard=()=>'<div class="card" style="margin:8px 0"><b>تحويل بين الصناديق</b> <span class="muted">(لا يُحسب إيراد ولا مصروف)</span><div class="row"><div><label>من</label><select id="tf1">'+fundOpts()+'</select></div><div><label>إلى</label><select id="tf2">'+fundOpts()+'</select></div><div><label>المبلغ</label><input id="tfa" type="number" step="any"></div><div><label>التاريخ</label><input id="tfd" type="date" value="'+ymd(new Date())+'"></div><div><label>ملاحظة</label><input id="tfn"></div><button class="btn" id="tfg" style="margin-top:20px">تحويل</button></div><div id="tfl"></div></div>';
+function trInit(after){const fl=FUNDS.filter(x=>x.old_id!==FUNDS[0].old_id);$('#tf2').selectedIndex=Math.min(1,FUNDS.length-1);
+    const ld=async()=>{const T=await run(sb.from('transfers').select('*').order('id',{ascending:false}).limit(15));$('#tfl').innerHTML=T.length?`<table><tr><th>#</th><th>التاريخ</th><th>من</th><th>إلى</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr>${T.map(t=>`<tr><td>${t.id}</td><td>${esc(t.day)}</td><td>${esc(t.from_name)}</td><td>${esc(t.to_name)}</td><td>${money(t.amount)}</td><td>${esc(t.note||'')}</td><td><button class="btn r s" onclick="delTr(${t.id})">حذف / عكس</button></td></tr>`).join('')}</table>`:''};
+    window._ldt=ld;ld();
+    $('#tfg').onclick=async()=>{const a=num($('#tfa').value);if(!(a>0))return toast('اكتب المبلغ',1);if($('#tf1').value===$('#tf2').value)return toast('اختر صندوقين مختلفين',1);
+      if(!confirm('تحويل '+money(a)+' من '+$('#tf1').selectedOptions[0].text+' إلى '+$('#tf2').selectedOptions[0].text+'؟'))return;
+      await run(sb.rpc('transfer_funds',{p_from:parseInt($('#tf1').value),p_to:parseInt($('#tf2').value),p_amount:a,p_day:$('#tfd').value,p_note:$('#tfn').value}));toast('تم التحويل');after()}}
 async function pBal(){
   await loadParties();await loadFunds();
   const grps=[...new Set(PARTIES.map(p=>p.grp||'أخرى'))].sort();
-  main(`<div class="card"><h2>الأرصدة من البرنامج القديم</h2><div class="row" style="margin-bottom:8px"><div><label>الصندوق الافتراضي (بيع / قبض / دفع)</label><select id="dfs">${fundOpts()}</select></div><button class="btn g" id="nfb" style="margin-top:20px">+ صندوق جديد (تحويل بنكي / انستاباي / محفظة...)</button></div>${isAdmin()?'<div class="card" style="margin:8px 0"><b>تحويل بين الصناديق</b> <span class="muted">(لا يُحسب إيراد ولا مصروف)</span><div class="row"><div><label>من</label><select id="tf1">'+fundOpts()+'</select></div><div><label>إلى</label><select id="tf2">'+fundOpts()+'</select></div><div><label>المبلغ</label><input id="tfa" type="number" step="any"></div><div><label>التاريخ</label><input id="tfd" type="date" value="'+ymd(new Date())+'"></div><div><label>ملاحظة</label><input id="tfn"></div><button class="btn" id="tfg" style="margin-top:20px">تحويل</button></div><div id="tfl"></div></div>':''}<p class="muted">عليه = مدين للمحل (المحل له عنده) | له = دائن (المحل عليه له). الأرصدة كما في آخر يوم في البرنامج القديم (26/11/2026).</p>
+  main(`<div class="card"><h2>الأرصدة من البرنامج القديم</h2><div class="row" style="margin-bottom:8px"><div><label>الصندوق الافتراضي (بيع / قبض / دفع)</label><select id="dfs">${fundOpts()}</select></div><button class="btn g" id="nfb" style="margin-top:20px">+ صندوق جديد (تحويل بنكي / انستاباي / محفظة...)</button></div>${isAdmin()?trCard():''}<p class="muted">عليه = مدين للمحل (المحل له عنده) | له = دائن (المحل عليه له). الأرصدة كما في آخر يوم في البرنامج القديم (26/11/2026).</p>
   <div class="row"><div><label>نوع الحساب</label><select id="bg"><option value="">الكل</option>${grps.map(g=>`<option>${esc(g)}</option>`).join('')}</select></div><div><label>بحث بالاسم أو الموبايل</label><input id="bq"></div><label class="fit" style="margin-top:20px"><input type="checkbox" id="bz" checked style="width:auto"> إخفاء الأرصدة الصفرية</label></div><div id="bs"></div><div class="tw" id="bl"></div></div>`);
   const draw=()=>{const g=$('#bg').value,q=$('#bq').value.trim().toLowerCase(),hz=$('#bz').checked;
     const L=PARTIES.filter(p=>(!g||(p.grp||'أخرى')===g)&&(!q||p.name.toLowerCase().includes(q)||(p.phone||'').replace(/\D/g,'').includes(q.replace(/\D/g,'')||'§')||(p.phone||'').includes(q))&&(!hz||Math.abs(p.balance)>0.004)&&(p.old_id>0||p.old_id===-3));
@@ -400,14 +411,9 @@ async function pBal(){
   $('#dfs').onchange=async()=>{await run(sb.rpc('set_default_fund',{p_fund:parseInt($('#dfs').value)}));toast('تم');await loadFunds()};
   $('#nfb').onclick=async()=>{const n=prompt('اسم الصندوق الجديد');if(!n)return;await run(sb.rpc('new_fund',{p_name:n}));toast('تمت الإضافة');pBal()};
   ['bg','bq','bz'].forEach(i=>$('#'+i).oninput=draw);draw();
-  if(isAdmin()){const fl=FUNDS.filter(x=>x.old_id!==FUNDS[0].old_id);$('#tf2').selectedIndex=Math.min(1,FUNDS.length-1);
-    const ld=async()=>{const T=await run(sb.from('transfers').select('*').order('id',{ascending:false}).limit(15));$('#tfl').innerHTML=T.length?`<table><tr><th>#</th><th>التاريخ</th><th>من</th><th>إلى</th><th>المبلغ</th><th>ملاحظة</th><th></th></tr>${T.map(t=>`<tr><td>${t.id}</td><td>${esc(t.day)}</td><td>${esc(t.from_name)}</td><td>${esc(t.to_name)}</td><td>${money(t.amount)}</td><td>${esc(t.note||'')}</td><td><button class="btn r s" onclick="delTr(${t.id})">حذف / عكس</button></td></tr>`).join('')}</table>`:''};
-    window._ldt=ld;ld();
-    $('#tfg').onclick=async()=>{const a=num($('#tfa').value);if(!(a>0))return toast('اكتب المبلغ',1);if($('#tf1').value===$('#tf2').value)return toast('اختر صندوقين مختلفين',1);
-      if(!confirm('تحويل '+money(a)+' من '+$('#tf1').selectedOptions[0].text+' إلى '+$('#tf2').selectedOptions[0].text+'؟'))return;
-      await run(sb.rpc('transfer_funds',{p_from:parseInt($('#tf1').value),p_to:parseInt($('#tf2').value),p_amount:a,p_day:$('#tfd').value,p_note:$('#tfn').value}));toast('تم التحويل');pBal()}}
+  if(isAdmin())trInit(pBal);
 }
-async function delTr(id){if(!confirm('حذف التحويل وإرجاع الرصيدين؟'))return;await run(sb.rpc('delete_transfer',{p_id:id}));toast('تم');pBal()}
+async function delTr(id){if(!confirm('حذف التحويل وإرجاع الرصيدين؟'))return;await run(sb.rpc('delete_transfer',{p_id:id}));toast('تم');go(page==='home'?'home':'bal')}
 async function stmt(id,off=0,append=false){
   if(!PARTIES)await loadParties();if(!FUNDS.length)await loadFunds();
   const p=PARTIES.find(x=>x.old_id===id);const N=300;
