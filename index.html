@@ -136,7 +136,7 @@ async function boot(){
   shell();go(isAdmin()?'home':'sell');
   timers.push(setInterval(()=>sb.rpc('ping',{p_page:PAGES[page]?.t||page}),30000));
 }
-const APP_VER='2026-11-27-j';
+const APP_VER='2026-11-27-k';
 function forceUpdate(){try{sessionStorage.removeItem('upd')}catch(e){}location.replace(location.pathname+'?v='+Date.now())}
 async function checkUpdate(){try{const r=await fetch(location.pathname+'?c='+Date.now(),{cache:'no-store'});const t=await r.text();const m=t.match(/const APP_VER='([^']+)'/);if(m&&m[1]!==APP_VER&&sessionStorage.getItem('upd')!==m[1]){sessionStorage.setItem('upd',m[1]);location.replace(location.pathname+'?v='+Date.now())}}catch(e){}}
 checkUpdate();document.addEventListener('visibilitychange',()=>{if(!document.hidden)checkUpdate()});
@@ -318,7 +318,48 @@ async function pSell(){
 }
 function docWin(){let buf='';return{document:{write:t=>{buf+=t},close:()=>showDoc(buf)}}}
 function closeDoc(){const o=document.getElementById('docov');if(o)o.remove();document.body.classList.remove('hasdoc')}
-function printDoc(){window.print()}
+const isStandalone=()=>!!(window.navigator.standalone||(window.matchMedia&&matchMedia('(display-mode: standalone)').matches));
+function printDoc(){if(isStandalone())return shareDoc();window.print()}
+async function docToPng(){
+  const root=document.querySelector('#docov .dc');if(!root)throw new Error('no doc');
+  const W=760,pad=26,S=2,F='Tahoma, Arial, sans-serif';
+  const cv=document.createElement('canvas'),ctx=cv.getContext('2d');ctx.direction='rtl';
+  const wrap=(text,font,maxW)=>{ctx.font=font;const out=[];String(text).split('\n').forEach(par=>{let line='';par.split(' ').forEach(w=>{const t=line?line+' '+w:w;if(ctx.measureText(t).width>maxW&&line){out.push(line);line=w}else line=t});out.push(line)});return out};
+  const ops=[];let y=pad;
+  const txt=(t,size,bold,align)=>{const font=(bold?'bold ':'')+size+'px '+F;const lines=wrap(t,font,W-2*pad);const lh=Math.round(size*1.5);ops.push({k:'t',lines,font,align,lh,y});y+=lines.length*lh+6};
+  for(const el of root.children){
+    const tg=el.tagName;
+    const im=tg==='IMG'?el:el.querySelector&&el.querySelector('img');
+    if(im){ops.push({k:'i',el:im,y});y+=100;continue}
+    if(tg==='H2')txt(el.innerText,24,1,'center');
+    else if(tg==='H3')txt(el.innerText,20,1,'right');
+    else if(tg==='HR'){ops.push({k:'h',y:y+4});y+=14}
+    else if(tg==='TABLE'){
+      for(const tr of el.querySelectorAll('tr')){
+        const cells=[...tr.children].map(c=>c.innerText.trim());const n=cells.length;
+        const fr=n===4?[.4,.12,.24,.24]:Array(n).fill(1/n);const isH=tr.querySelector('th');
+        const font=(isH?'bold ':'')+'15px '+F;const inner=W-2*pad;
+        const wr=cells.map((c,i)=>wrap(c,font,inner*fr[i]-8));const m=Math.max(...wr.map(x=>x.length));const lh=22;
+        ops.push({k:'r',wr,fr,font,y,lh,m,isH});y+=m*lh+10;
+      }
+    }else txt(el.innerText,15,0,'center');
+  }
+  y+=pad;cv.width=W*S;cv.height=y*S;ctx.scale(S,S);ctx.direction='rtl';ctx.fillStyle='#fff';ctx.fillRect(0,0,W,y);ctx.fillStyle='#000';ctx.textBaseline='top';
+  for(const o of ops){
+    if(o.k==='i'){const d=90;try{ctx.drawImage(o.el,(W-d)/2,o.y,d,d)}catch(e){}}
+    else if(o.k==='h'){ctx.strokeStyle='#888';ctx.beginPath();ctx.moveTo(pad,o.y);ctx.lineTo(W-pad,o.y);ctx.stroke()}
+    else if(o.k==='t'){ctx.font=o.font;ctx.textAlign=o.align;const x=o.align==='center'?W/2:o.align==='right'?W-pad:pad;o.lines.forEach((l,i)=>ctx.fillText(l,x,o.y+i*o.lh))}
+    else if(o.k==='r'){ctx.font=o.font;ctx.textAlign='right';const inner=W-2*pad;let x=W-pad;o.wr.forEach((lines,i)=>{lines.forEach((l,j)=>ctx.fillText(l,x-4,o.y+j*o.lh));x-=inner*o.fr[i]});ctx.strokeStyle='#999';ctx.setLineDash([4,3]);ctx.beginPath();ctx.moveTo(pad,o.y+o.m*o.lh+5);ctx.lineTo(W-pad,o.y+o.m*o.lh+5);ctx.stroke();ctx.setLineDash([])}
+  }
+  return await new Promise(r=>cv.toBlob(r,'image/png'));
+}
+async function shareDoc(){
+  let blob;try{blob=await docToPng()}catch(e){return toast('تعذر تجهيز الصورة',1)}
+  const f=new File([blob],'invoice-'+Date.now()+'.png',{type:'image/png'});
+  try{if(navigator.canShare&&navigator.canShare({files:[f]})){await navigator.share({files:[f],title:'فاتورة DEMO'});return}}catch(e){if(e&&e.name==='AbortError')return}
+  const u=URL.createObjectURL(blob);const dc=document.querySelector('#docov .dc');
+  if(dc)dc.innerHTML='<p style="text-align:center;font-size:14px">اضغط مطولا على الصورة ثم اختر "حفظ" أو "مشاركة" أو "طباعة"</p><img src="'+u+'" style="width:100%;max-width:760px;display:block;margin:auto;border:1px solid #ccc">';
+}
 function showDoc(html){
   closeDoc();
   const d=new DOMParser().parseFromString(html,'text/html');
@@ -326,7 +367,7 @@ function showDoc(html){
   let css='';d.querySelectorAll('style').forEach(e=>{css+=e.textContent;e.remove()});
   css=css.replace(/@media print\{[^}]*\}\}?/g,'').replace(/(^|\})\s*([^{}@]+)\{/g,(m,a,sel)=>a+sel.split(',').map(x=>'#docov .dc '+(x.trim()==='body'?'':x.trim())).join(',')+'{');
   const o=document.createElement('div');o.id='docov';
-  o.innerHTML='<style>'+css+'</style><div class="noprint dbar"><button onclick="closeDoc()" class="dbc">✕ إغلاق والرجوع للتطبيق</button><button onclick="printDoc()" class="dbp">طباعة</button></div><div class="dc" dir="rtl">'+d.body.innerHTML+'</div>';
+  o.innerHTML='<style>'+css+'</style><div class="noprint dbar"><button onclick="closeDoc()" class="dbc">✕ إغلاق والرجوع للتطبيق</button><button onclick="printDoc()" class="dbp">'+(isStandalone()?'مشاركة / حفظ':'طباعة')+'</button>'+(isStandalone()?'':'<button onclick="shareDoc()" class="dbp">صورة / مشاركة</button>')+'</div><div class="dc" dir="rtl">'+d.body.innerHTML+'</div>';
   document.body.appendChild(o);document.body.classList.add('hasdoc');o.scrollTop=0;if(!(window.matchMedia&&matchMedia('(pointer:coarse)').matches))setTimeout(()=>window.print(),500);
 }
 async function printSale(id){
